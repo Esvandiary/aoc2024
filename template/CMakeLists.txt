@@ -9,7 +9,9 @@ project(${name} C)
 
 add_executable(${name} "main.c")
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static-libgcc -static -O3 -march=native -mtune=native")
-set_target_properties(${name} PROPERTIES LINK_SEARCH_START_STATIC ON)
-set_target_properties(${name} PROPERTIES LINK_SEARCH_END_STATIC ON)
-target_link_options(${name} PRIVATE "-static-libgcc")
+if (NOT WIN32)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static-libgcc -static -O3 -march=native -mtune=native")
+    set_target_properties(${name} PROPERTIES LINK_SEARCH_START_STATIC ON)
+    set_target_properties(${name} PROPERTIES LINK_SEARCH_END_STATIC ON)
+    target_link_options(${name} PRIVATE "-static-libgcc")
+endif ()
