@@ -13,6 +13,8 @@ typedef unsigned char chartype;
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
+#define isdigit(c) ((c) >= '0' && (c) <= '9')
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #define FORCEINLINE __forceinline
 #elif defined(__GNUC__) || defined(__clang__) || defined(__GNUC_MINOR__)
