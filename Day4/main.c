@@ -13,7 +13,7 @@ int main(int argc, char** argv)
     int width;
     for (width = 0; file.data[width] != '\n'; ++width);
     const int linewidth = width + 1;
-    const int height = fileSize / linewidth;
+    const int height = (fileSize + 2) / linewidth;
 
     uint64_t sum1 = 0, sum2 = 0;
 
