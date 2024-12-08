@@ -37,7 +37,7 @@ int main(int argc, char** argv)
     while (idx < fileSize - 2)
     {
         count = 0;
-        while (file.data[idx] != '\n')
+        while (idx < fileSize && file.data[idx] != '\n')
         {
             pages[count] = 0;
             while (isdigit(file.data[idx]))
