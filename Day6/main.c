@@ -52,22 +52,18 @@ int main(int argc, char** argv)
 
     while (LIKELY((gx + gdx) >= 0 && (gx + gdx) < width && (gy + gdy) >= 0 && (gy + gdy) < height))
     {
-        bool turned = false;
         while (CHARAT(gx + gdx, gy + gdy) == '#')
         {
-            turned = true;
             // change direction
             TURN(gdx, gdy);
         }
 
         if (pop[gy + gdy][gx + gdx] == 0)
         {
-            DEBUGLOG("speculating step %d @ [%d,%d]+[%d,%d]\n", step, gx, gy, gdx, gdy);
             // we didn't turn, so speculate what would happen if we did
             // we need to eventually end up running into our own path travelling in the same direction
             int sgx = gx, sgy = gy;
             int sgdx = gdx, sgdy = gdy;
-            int ssteps = 0;
             // temporarily make the blockage
             CHARAT(gx + gdx, gy + gdy) = '#';
         snextiter:
@@ -99,7 +95,8 @@ int main(int argc, char** argv)
 
             if ((pop[sgy][sgx] & MKDIR(sgdx, sgdy)) == MKDIR(sgdx, sgdy) || (spop[sgy][sgx] & MKDIR(sgdx, sgdy)) == MKDIR(sgdx, sgdy))
             {
-                goto sgood;
+                sum2 += 1;
+                goto sdone;
             }
             if (sgx >= 0 && sgx < width && sgy >= 0 && sgy < height)
             {
@@ -109,9 +106,7 @@ int main(int argc, char** argv)
             {
                 goto sdone;
             }
-        
-        sgood:
-            sum2 += 1;
+
         sdone:
             // clear the speculative blockage
             CHARAT(gx + gdx, gy + gdy) = '.';
