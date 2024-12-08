@@ -50,28 +50,28 @@ int main(int argc, char** argv)
         ++idx; // \n
 
         bool pristine = true;
-        bool solved;
-        do
+        int start = 0;
+
+    AGAIN_AGAIN:
+        for (int i = start; i < count - 1; ++i)
         {
-            solved = true;
-            for (int i = 0; i < count - 1; ++i)
+            for (int j = count - 1; j > i; --j)
             {
-                for (int j = i + 1; j < count; ++j)
+                for (int k = 0; k < revlookupcnt[pages[i]]; ++k)
                 {
-                    for (int k = 0; k < revlookupcnt[pages[i]]; ++k)
+                    if (pages[j] == revlookup[pages[i]][k])
                     {
-                        if (pages[j] == revlookup[pages[i]][k])
-                        {
-                            pristine = false;
-                            solved = false;
-                            int tmp = pages[j];
-                            pages[j] = pages[i];
-                            pages[i] = tmp;
-                        }
+                        pristine = false;
+                        int tmp = pages[j];
+                        pages[j] = pages[i];
+                        pages[i] = tmp;
+                        start = i;
+                        // end = j; // invalid
+                        goto AGAIN_AGAIN;
                     }
                 }
             }
-        } while (!solved);
+        }
 
         if (pristine)
             sum1 += pages[count/2];
