@@ -24,6 +24,10 @@ typedef enum direction
     LEFT  = MKDIR(-1, 0),
 } direction;
 
+static uint64_t positions[160][3];
+static uint8_t pop[160][160];
+static uint8_t spop[160][160];
+
 int main(int argc, char** argv)
 {
     mmap_file file = mmap_file_open_ro("input.txt");
@@ -42,10 +46,6 @@ int main(int argc, char** argv)
     int gdx = 0, gdy = -1;
 
     uint64_t sum1 = 0, sum2 = 0;
-
-    uint64_t positions[160][3] = {0};
-    uint8_t pop[160][160] = {0};
-    uint8_t spop[160][160] = {0};
 
     positions[gy][gx >> 6] |= (uint64_t)1 << (gx & 0x3F);
     pop[gy][gx] |= MKDIR(gdx, gdy);

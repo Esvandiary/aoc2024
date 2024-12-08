@@ -6,15 +6,15 @@
 
 #define isdigit(c) ((c) >= '0' && (c) <= '9')
 
+static int revlookup[100][100];
+static int revlookupcnt[100];
+
 int main(int argc, char** argv)
 {
     mmap_file file = mmap_file_open_ro("input.txt");
     const int fileSize = (int)(file.size);
 
     uint64_t sum1 = 0, sum2 = 0;
-
-    int revlookup[100][100] = {0};
-    int revlookupcnt[100] = {0};
 
     int idx = 0;
     while (file.data[idx] != '\n')
