@@ -88,6 +88,12 @@ int main(int argc, char** argv)
                 goto sdone;
             }
 
+            if ((pop[sgy][sgx] & MKDIR(sgdx, sgdy)) == MKDIR(sgdx, sgdy) || (spop[sgy][sgx] & MKDIR(sgdx, sgdy)) == MKDIR(sgdx, sgdy))
+            {
+                sum2 += 1;
+                goto sdone;
+            }
+
             spop[sgy][sgx] |= MKDIR(sgdx, sgdy);
 
             sgx += sgdx;
@@ -95,15 +101,7 @@ int main(int argc, char** argv)
 
             if (sgx >= 0 && sgx < width && sgy >= 0 && sgy < height)
             {
-                if ((pop[sgy][sgx] & MKDIR(sgdx, sgdy)) == MKDIR(sgdx, sgdy) || (spop[sgy][sgx] & MKDIR(sgdx, sgdy)) == MKDIR(sgdx, sgdy))
-                {
-                    sum2 += 1;
-                    goto sdone;
-                }
-                else
-                {
-                    goto snextiter;
-                }
+                goto snextiter;
             }
             else
             {
