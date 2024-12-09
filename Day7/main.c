@@ -47,12 +47,12 @@ int main(int argc, char** argv)
         while (isdigit(file.data[idx]))
             num0 = (num0 * 10) + (file.data[idx++] & 0xF);
         ++idx; // ':'
-        while (file.data[idx] != '\n')
+        while (idx < fileSize && file.data[idx] != '\n')
         {
             ++idx; // ' '
             numbers[count] = 0;
             numlens[count] = 0;
-            while (isdigit(file.data[idx]))
+            while (idx < fileSize && isdigit(file.data[idx]))
             {
                 numbers[count] = (numbers[count] * 10) + (file.data[idx++] & 0xF);
                 ++numlens[count];
