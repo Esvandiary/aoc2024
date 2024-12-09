@@ -4,6 +4,10 @@
 
 #define isdigit(c) ((c) >= '0' && (c) <= '9')
 
+#if !defined(min)
+    #define min(x,y) (((x) < (y)) ? (x) : (y))
+#endif
+
 #define TYPE_ID   0
 #define TYPE_FREE 1
 #define TYPE_REF  2
