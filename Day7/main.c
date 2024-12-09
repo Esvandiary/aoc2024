@@ -58,10 +58,12 @@ int main(int argc, char** argv)
         ++idx; // '\n'
 
         uint8_t result = is_possible(count, num0, 1, numbers[0], PART1);
-        if ((result & PART1) == PART1)
-            sum1 += num0;
         if (result)
+        {
             sum2 += num0;
+            if ((result & PART1) == PART1)
+                sum1 += num0;
+        }
     }
 
     print_uint64(sum1);
