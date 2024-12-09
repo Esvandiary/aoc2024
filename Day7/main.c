@@ -59,7 +59,8 @@ int main(int argc, char** argv)
             }
             ++count;
         }
-        ++idx; // '\n'
+        while (idx < fileSize && !isdigit(file.data[idx]))
+            ++idx;
 
         uint8_t result = is_possible(count, num0, 1, numbers[0], PART1);
         if (result)
