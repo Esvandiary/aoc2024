@@ -9,7 +9,7 @@
 #define PART1 (1 << 0)
 #define PART2 (1 << 1)
 
-static int64_t nummuls[] = {1, 10, 100, 1000, 10000, 100000, 1000000};
+static const int64_t nummuls[] = {1, 10, 100, 1000, 10000, 100000, 1000000};
 
 static int64_t numbers[64];
 static int numlens[64];
