@@ -9,8 +9,10 @@
 #define PART1 (1 << 0)
 #define PART2 (1 << 1)
 
+static const int64_t nummuls[] = {1, 10, 100, 1000, 10000, 100000, 1000000};
+
 static int64_t numbers[64];
-static int nummuls[64];
+static int numlens[64];
 
 static uint8_t is_possible(int count, int64_t target, int n, int64_t running_total, uint8_t success)
 {
@@ -25,7 +27,7 @@ static uint8_t is_possible(int count, int64_t target, int n, int64_t running_tot
     result |= is_possible(count, target, n + 1, running_total * numbers[n], success);
     if (result & PART1)
         return result;
-    return result | is_possible(count, target, n + 1, running_total * nummuls[n] + numbers[n], PART2);
+    return result | is_possible(count, target, n + 1, running_total * nummuls[numlens[n]] + numbers[n], PART2);
 }
 
 int main(int argc, char** argv)
@@ -49,11 +51,11 @@ int main(int argc, char** argv)
         {
             ++idx; // ' '
             numbers[count] = 0;
-            nummuls[count] = 1;
+            numlens[count] = 0;
             while (isdigit(file.data[idx]))
             {
                 numbers[count] = (numbers[count] * 10) + (file.data[idx++] & 0xF);
-                nummuls[count] *= 10;
+                ++numlens[count];
             }
             ++count;
         }
