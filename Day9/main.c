@@ -19,14 +19,7 @@ typedef struct span
     uint8_t type; // TYPE_*
 } span;
 
-static span pool[32768];
-static uint64_t poolcount = 0;
-
-static span spans[32768];
-static uint64_t spancount = 0;
-
-static span p1spans[32768];
-static uint64_t p1spancount = 0;
+static int16_t nums[262144];
 
 typedef struct llspan
 {
@@ -66,15 +59,19 @@ int main(int argc, char** argv)
 
     int idx = 0;
     int16_t file_id = 0;
+    int numpos = 0;
     while (idx < fileSize && isdigit(file.data[idx]))
     {
         int file_len = file.data[idx++] - 48;
         int free_len = file.data[idx++] - 48;
 
+        for (int i = 0; i < file_len; ++i)
+            nums[numpos++] = file_id;
+        for (int i = 0; i < free_len; ++i)
+            nums[numpos++] = FREE;
+
         const span filespan = (span){file_id, file_len, TYPE_ID};
         const span freespan = (span){FREE, free_len, TYPE_FREE};
-        spans[spancount++] = filespan;
-        spans[spancount++] = freespan;
         p2tail = insert_node(p2tail, filespan);
         p2tail = insert_node(p2tail, freespan);
 
@@ -83,68 +80,38 @@ int main(int argc, char** argv)
     p2head = p2head->next;
     p2head->prev = NULL;
 
-    int lastfile = spancount-1;
-    while (spans[lastfile].type == TYPE_FREE)
+    int lastfile = numpos-1;
+    while (nums[lastfile] == FREE)
         --lastfile;
-
     int firstfree = 0;
-    while (spans[firstfree].type != TYPE_FREE)
-    {
-        p1spans[p1spancount++] = spans[firstfree];
+    while (nums[firstfree] != FREE)
         ++firstfree;
-    }
-
-    int p1lastfile = lastfile, p1firstfree = firstfree;
-
-    span freespan = spans[p1firstfree];
-    span lastspan = spans[p1lastfile];
-    while (p1firstfree < p1lastfile)
+    
+    while (firstfree < lastfile)
     {
-        DEBUGLOG("[P1] firstfree = %d, lastfile = %d\n", p1firstfree, p1lastfile);
-
-        int count = min(lastspan.len, freespan.len);
-        p1spans[p1spancount++] = (span){lastspan.id, count, TYPE_ID};
-        lastspan.len -= count;
-        freespan.len -= count;
-
-        DEBUGLOG("[P1] moved %d of id %d (%d left), free len = %d, last len = %d\n", count, lastspan.id, lastspan.len, freespan.len, lastspan.len);
-
-        if (freespan.len == 0)
-        {
-            ++p1firstfree;
-            while (spans[p1firstfree].type != TYPE_FREE && p1firstfree < p1lastfile)
-            {
-                p1spans[p1spancount++] = spans[p1firstfree];
-                ++p1firstfree;
-            }
-            freespan = spans[p1firstfree];
-        }
-        if (lastspan.len == 0)
-        {
-            --p1lastfile;
-            while (spans[p1lastfile].type == TYPE_FREE)
-                --p1lastfile;
-            lastspan = spans[p1lastfile];
-        }
+        DEBUGLOG("firstfree = %d, lastfile = %d\n", firstfree, lastfile);
+        nums[firstfree++] = nums[lastfile];
+        nums[lastfile--] = FREE;
+        while (nums[lastfile] == FREE)
+            --lastfile;
+        while (nums[firstfree] != FREE)
+            ++firstfree;
     }
-    if (lastspan.len != 0)
-        p1spans[p1spancount++] = lastspan;
-
     uint64_t sum1 = 0;
-
-    int p1len = 0;
-    for (int i = 0; i < p1spancount; ++i)
+    for (int i = 0; i < numpos; ++i)
     {
-        for (int j = 0; j < p1spans[i].len; ++j)
-            sum1 += (p1len++ * p1spans[i].id);
+        if (nums[i] == FREE)
+            break;
+        sum1 += (i * nums[i]);
     }
 
 #if defined(ENABLE_DEBUGLOG)
-    DEBUGLOG("P1 ");
-    for (int i = 0; i < p1spancount; ++i)
+    for (int i = 0; i < numpos; ++i)
     {
-        for (int j = 0; j < p1spans[i].len; ++j)
-            DEBUGLOG("[%d]", p1spans[i].id);
+        if (nums[i] != FREE)
+            DEBUGLOG("[%d]", nums[i]);
+        else
+            DEBUGLOG(".");
     }
     DEBUGLOG("\n");
 #endif
