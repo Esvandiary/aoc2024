@@ -14,20 +14,26 @@ static const int64_t nummuls[] = {1, 10, 100, 1000, 10000, 100000, 1000000};
 static int64_t numbers[64];
 static int numlens[64];
 
-static uint8_t is_possible(int count, int64_t target, int n, int64_t running_total, uint8_t success)
+static bool is_possible_p1(int count, int64_t target, int n, int64_t running_total)
 {
     if (n == count)
-        return (running_total == target) ? success : 0;
+        return (running_total == target);
     if (running_total > target)
         return false;
     
-    uint8_t result = is_possible(count, target, n + 1, running_total + numbers[n], success);
-    if (result & PART1)
-        return result;
-    result |= is_possible(count, target, n + 1, running_total * numbers[n], success);
-    if (result & PART1)
-        return result;
-    return result | is_possible(count, target, n + 1, running_total * nummuls[numlens[n]] + numbers[n], PART2);
+    return is_possible_p1(count, target, n + 1, running_total + numbers[n])
+        || is_possible_p1(count, target, n + 1, running_total * numbers[n]);
+}
+
+static bool is_possible_p2(int count, int64_t target, int n, int64_t running_total)
+{
+    if (n == count)
+        return (running_total == target);
+    if (running_total > target)
+        return false;
+    return is_possible_p2(count, target, n + 1, running_total + numbers[n])
+        || is_possible_p2(count, target, n + 1, running_total * numbers[n])
+        || is_possible_p2(count, target, n + 1, running_total * nummuls[numlens[n]] + numbers[n]);
 }
 
 int main(int argc, char** argv)
@@ -62,12 +68,14 @@ int main(int argc, char** argv)
         while (idx < fileSize && !isdigit(file.data[idx]))
             ++idx;
 
-        uint8_t result = is_possible(count, num0, 1, numbers[0], PART1);
-        if (result)
+        if (is_possible_p1(count, num0, 1, numbers[0]))
+        {
+            sum1 += num0;
+            sum2 += num0;
+        }
+        else if (is_possible_p2(count, num0, 1, numbers[0]))
         {
             sum2 += num0;
-            if (result & PART1)
-                sum1 += num0;
         }
     }
 
