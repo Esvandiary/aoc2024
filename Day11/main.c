@@ -3,6 +3,10 @@
 #include "../common/view.h"
 #include "../common/uthash/uthash.h"
 
+#include <limits.h>
+
+#define isdigit(c) ((c) >= '0' && (c) <= '9')
+
 #if defined(_MSC_VER)
 static inline FORCEINLINE uint64_t clz(uint64_t value)
 {
@@ -13,7 +17,7 @@ static inline FORCEINLINE uint64_t clz(uint64_t value)
         return 64;
 }
 #else
-#define clz(n) __builtin_clz(n)
+#define clz(n) __builtin_clzll(n)
 #endif
 
 static const uint64_t powers[20] = {
@@ -49,7 +53,7 @@ typedef struct lookup
 static lookup cachestore[1048576];
 static uint64_t cachestorecount;
 
-static lookup* cache[32];
+static lookup* cache[128];
 
 static uint64_t count_stones(uint64_t n, uint32_t steps)
 {
