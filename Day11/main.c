@@ -50,7 +50,7 @@ typedef struct lookup
     UT_hash_handle hh;
 } lookup;
 
-static lookup cachestore[524288];
+static lookup cachestore[1048576];
 static uint64_t cachestorecount;
 
 static lookup* cache[128];
@@ -114,7 +114,7 @@ int main(int argc, char** argv)
         DEBUGLOG("### stone: %" PRId64 "\n", num0);
         sum1 += count_stones(num0, 25);
         sum2 += count_stones(num0, 75);
-        DEBUGLOG("### num0 = %" PRId64 ", sum1 = % " PRIu64 "\n", num0, sum1);
+        DEBUGLOG("### num0 = %" PRId64 ", sum1 = %" PRIu64 "\n", num0, sum1);
     }
 
     print_uint64(sum1);
