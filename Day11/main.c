@@ -50,7 +50,7 @@ typedef struct lookup
     UT_hash_handle hh;
 } lookup;
 
-static lookup cachestore[1048576];
+static lookup cachestore[524288];
 static uint64_t cachestorecount;
 
 static lookup* cache[128];
