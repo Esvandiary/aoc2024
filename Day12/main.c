@@ -1,14 +1,13 @@
-// #define ENABLE_DEBUGLOG
 #include "../common/mmap.h"
 #include "../common/print.h"
 #include "../common/view.h"
 
+#define INDEXOF(x,y) ((y) * (linewidth) + (x))
 #define CHARAT(x,y) (file.data[(y)*linewidth + (x)])
-#define MAPCHARAT(x,y) (map.data[(y)*map.linewidth + (x)])
+#define MAPINDEXOF(x,y) ((y) * (map.linewidth) + (x))
+#define MAPCHARAT(x,y) (map.data[MAPINDEXOF((x),(y))])
 
 #define ISVALID(c) ((c) >= 'A' && (c) <= 'Z')
-#define ISVALIDAT(x,y) ISVALID(CHARAT(x,y))
-#define MAPISVALIDAT(x,y) ISVALID(MAPCHARAT(x,y))
 
 typedef struct map
 {
@@ -20,8 +19,8 @@ typedef struct map
 
 typedef struct pos
 {
-    uint32_t x;
-    uint32_t y;
+    int32_t x;
+    int32_t y;
 } pos;
 
 typedef enum dir
@@ -33,6 +32,9 @@ typedef enum dir
 } dir;
 
 #define INVALID '~'
+
+static uint32_t areas[4096];
+static uint8_t cornercount[65536];
 
 #define CHECK_DIR(reqt, x, y) { \
     if (reqt) { \
@@ -53,7 +55,7 @@ static uint64_t traverse_plot(map map, pos pos)
     const char c = MAPCHARAT(pos.x, pos.y);
     const char lc = c | 0x20;
     MAPCHARAT(pos.x, pos.y) = lc;
-    uint64_t result = (1ULL << 32);
+    uint64_t result = (1ULL << 32) | ((uint64_t)cornercount[MAPINDEXOF(pos.x, pos.y)] << 48);
 
     CHECK_DIR(pos.x+1 < map.width, pos.x+1, pos.y);
     CHECK_DIR(pos.y > 0, pos.x, pos.y-1);
@@ -63,71 +65,36 @@ static uint64_t traverse_plot(map map, pos pos)
     return result;
 }
 
-
-static uint32_t find_corners(const map map, pos opos, char c)
+static inline FORCEINLINE uint8_t get_corner_count(map map, pos pos)
 {
-    pos cpos = opos;
-    dir ctrack = LEFT;
+    const char c11 = MAPCHARAT(pos.x, pos.y);
+    const char c00 = (pos.x > 0 && pos.y > 0 ? MAPCHARAT(pos.x-1, pos.y-1) : '~');
+    const char c01 = (pos.y > 0 ? MAPCHARAT(pos.x, pos.y-1) : '~');
+    const char c02 = (pos.x+1 < map.width && pos.y > 0 ? MAPCHARAT(pos.x+1, pos.y-1) : '~');
+    const char c10 = (pos.x > 0 ? MAPCHARAT(pos.x-1, pos.y) : '~');
+    const char c12 = (pos.x+1 < map.width ? MAPCHARAT(pos.x+1, pos.y) : '~');
+    const char c20 = (pos.x > 0 && pos.y+1 < map.height ? MAPCHARAT(pos.x-1, pos.y+1) : '~');
+    const char c21 = (pos.y+1 < map.height ? MAPCHARAT(pos.x, pos.y+1) : '~');
+    const char c22 = (pos.x+1 < map.width && pos.y+1 < map.height ? MAPCHARAT(pos.x+1, pos.y+1) : '~');
 
-    uint32_t corners = 0;
+    uint8_t result = 0;
+    // inner corners
+    if (c10 != c11 && c01 != c11) ++result;
+    if (c12 != c11 && c01 != c11) ++result;
+    if (c10 != c11 && c21 != c11) ++result;
+    if (c12 != c11 && c21 != c11) ++result;
+    // outer corners
+    if (c10 == c11 && c01 == c11 && c00 != c11) ++result;
+    if (c12 == c11 && c01 == c11 && c02 != c11) ++result;
+    if (c10 == c11 && c21 == c11 && c20 != c11) ++result;
+    if (c12 == c11 && c21 == c11 && c22 != c11) ++result;
 
-    int iters = 0;
-    do
-    {
-        // check for out-corners
-        if (ctrack == LEFT && cpos.x != 0 && MAPCHARAT(cpos.x-1, cpos.y) == c)
-        {
-            ++corners;
-            ctrack = DOWN;
-        }
-        else if (ctrack == DOWN && cpos.y+1 < map.height && MAPCHARAT(cpos.x, cpos.y+1) == c)
-        {
-            ++corners;
-            ctrack = RIGHT;
-        }
-        else if (ctrack == RIGHT && cpos.x+1 < map.width && MAPCHARAT(cpos.x+1, cpos.y) == c)
-        {
-            ++corners;
-            ctrack = UP;
-        }
-        else if (ctrack == UP && cpos.y != 0 && MAPCHARAT(cpos.x, cpos.y-1) == c)
-        {
-            ++corners;
-            ctrack = LEFT;
-        }
-
-        // try to move
-        pos npos;
-        if (ctrack == LEFT)
-            npos = (pos) { cpos.x, cpos.y - 1 };
-        else if (ctrack == UP)
-            npos = (pos) { cpos.x + 1, cpos.y };
-        else if (ctrack == RIGHT)
-            npos = (pos) { cpos.x, cpos.y + 1 };
-        else if (ctrack == DOWN)
-            npos = (pos) { cpos.x - 1, cpos.y };
-
-        if (npos.x >= 0 && npos.x < map.width && npos.y >= 0 && npos.y < map.height && MAPCHARAT(npos.x, npos.y) == c)
-        {
-            // success
-            cpos = npos;
-            continue;
-        }
-        else
-        {
-            // in-corner
-            ++corners;
-            ctrack = (ctrack + 1) & 3;
-        }
-    } while (!(cpos.x == opos.x && cpos.y == opos.y && ctrack == LEFT));
-    
-    return corners;
+    return result;
 }
-
 
 int main(int argc, char** argv)
 {
-    mmap_file file = mmap_file_open_ro("sample.txt");
+    mmap_file file = mmap_file_open_ro("input.txt");
     const int fileSize = (int)(file.size);
 
     int width = 0;
@@ -142,20 +109,69 @@ int main(int argc, char** argv)
 
     uint64_t sum1 = 0, sum2 = 0;
 
+    for (int x = 1; x < width - 1; ++x)
+    {
+        cornercount[INDEXOF(x, 0)] = get_corner_count(map, (struct pos) { x, 0 });
+        cornercount[INDEXOF(x, height-1)] = get_corner_count(map, (struct pos) { x, height-1 });
+    }
+
+    for (int y = 0; y < height; ++y)
+    {
+        cornercount[INDEXOF(0, y)] = get_corner_count(map, (struct pos) { 0, y });
+        if (y > 0)
+            cornercount[INDEXOF(0, y-1)] = get_corner_count(map, (struct pos) { 0, y-1 });
+        if (y+1 < height)
+            cornercount[INDEXOF(0, y+1)] = get_corner_count(map, (struct pos) { 0, y+1 });
+
+        for (int x = 1; x < width; ++x)
+        {
+            if (CHARAT(x, y) != CHARAT(x-1, y))
+            {
+                cornercount[INDEXOF(x-1, y)] = get_corner_count(map, (struct pos) { x-1, y });
+                cornercount[INDEXOF(x, y)] = get_corner_count(map, (struct pos) { x, y });
+                if (y > 0)
+                {
+                    cornercount[INDEXOF(x-1, y-1)] = get_corner_count(map, (struct pos) { x-1, y-1 });
+                    cornercount[INDEXOF(x, y-1)] = get_corner_count(map, (struct pos) { x, y-1 });
+                }
+                if (y+1 < height)
+                {
+                    cornercount[INDEXOF(x-1, y+1)] = get_corner_count(map, (struct pos) { x-1, y+1 });
+                    cornercount[INDEXOF(x, y+1)] = get_corner_count(map, (struct pos) { x, y+1 });
+                }
+            }
+        }
+        cornercount[INDEXOF(width-1, y)] = get_corner_count(map, (struct pos) { width-1, y });
+        if (y > 0)
+            cornercount[INDEXOF(width-1, y-1)] = get_corner_count(map, (struct pos) { width-1, y-1 });
+        if (y+1 < height)
+            cornercount[INDEXOF(width-1, y+1)] = get_corner_count(map, (struct pos) { width-1, y+1 });
+    }
+
+#if defined(ENABLE_DEBUGLOG)
+    for (int y = 0; y < height; ++y)
+    {
+        for (int x = 0; x < width; ++x)
+            DEBUGLOG("%d", cornercount[INDEXOF(x,y)]);
+        DEBUGLOG("\n");
+    }
+#endif
+
+    int areaidx = 0;
     for (int y = 0; y < height; ++y)
     {
         for (int x = 0; x < width; ++x)
         {
-            if (ISVALIDAT(x, y))
+            if (ISVALID(CHARAT(x, y)))
             {
-                DEBUGLOG("plot of %c", CHARAT(x, y));
+                DEBUGLOG("plot of %c:\n", CHARAT(x, y));
                 const uint64_t plotresult = traverse_plot(map, (struct pos) { x, y });
-                const uint32_t area = (plotresult >> 32);
+                const uint32_t area = (plotresult >> 32) & 0xFFFFULL;
                 const uint32_t perimeter = (plotresult & 0xFFFFFFFFULL);
-                const uint32_t sides = find_corners(map, (struct pos) { x, y }, CHARAT(x, y));
+                const uint32_t sides = (plotresult >> 48);
                 sum1 += area * perimeter;
                 sum2 += area * sides;
-                DEBUGLOG(" P1 price %u x %u = %u, P2 price = %u x %u = %u\n", area, perimeter, area * perimeter, area, sides, area * sides);
+                DEBUGLOG("    P1 price %u x %u = %u, P2 price %u x %u = %u\n", area, perimeter, area * perimeter, area, sides, area * sides);
             }
         }
     }
