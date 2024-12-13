@@ -8,44 +8,16 @@
     #define min(x,y) (((x) < (y)) ? (x) : (y))
 #endif
 
-#define TYPE_ID   0
-#define TYPE_FREE 1
-#define TYPE_REF  2
+static int16_t nums1[262144];
 
 typedef struct span
 {
-    int16_t id;
-    uint8_t len;
-    uint8_t type; // TYPE_*
+    int16_t file_id;
+    int8_t len;
+    int8_t idx;
 } span;
 
-static int16_t nums[262144];
-
-typedef struct llspan
-{
-    struct llspan* prev;
-    struct llspan* next;
-    span span;
-} llspan;
-
-static llspan p2nodes[32768];
-static uint64_t p2nodecount = 0;
-
-static inline FORCEINLINE llspan* create_llspan(span span)
-{
-    p2nodes[p2nodecount] = (llspan){NULL, NULL, span};
-    return p2nodes + p2nodecount++;
-}
-
-static inline FORCEINLINE llspan* insert_node(llspan* after, span span)
-{
-    p2nodes[p2nodecount] = (llspan){after, after->next, span};
-    if (after->next)
-        after->next->prev = p2nodes + p2nodecount;
-    after->next = p2nodes + p2nodecount;
-    ++p2nodecount;
-    return after->next;
-}
+static span nums2[262144];
 
 #define FREE -1
 
@@ -53,9 +25,6 @@ int main(int argc, char** argv)
 {
     mmap_file file = mmap_file_open_ro("input.txt");
     const int fileSize = (int)(file.size);
-
-    llspan* p2head = create_llspan((span){FREE, 0, TYPE_FREE});
-    llspan* p2tail = p2head;
 
     int idx = 0;
     int16_t file_id = 0;
@@ -66,50 +35,52 @@ int main(int argc, char** argv)
         int free_len = file.data[idx++] - 48;
 
         for (int i = 0; i < file_len; ++i)
-            nums[numpos++] = file_id;
+        {
+            nums1[numpos] = file_id;
+            nums2[numpos] = (struct span) { file_id, file_len, i };
+            ++numpos;
+        }
         for (int i = 0; i < free_len; ++i)
-            nums[numpos++] = FREE;
-
-        const span filespan = (span){file_id, file_len, TYPE_ID};
-        const span freespan = (span){FREE, free_len, TYPE_FREE};
-        p2tail = insert_node(p2tail, filespan);
-        p2tail = insert_node(p2tail, freespan);
+        {
+            nums1[numpos] = FREE;
+            nums2[numpos] = (struct span) { FREE, free_len, i };
+            ++numpos;
+        }
 
         ++file_id;
     }
-    p2head = p2head->next;
-    p2head->prev = NULL;
 
     int lastfile = numpos-1;
-    while (nums[lastfile] == FREE)
+    while (nums1[lastfile] == FREE)
         --lastfile;
     int firstfree = 0;
-    while (nums[firstfree] != FREE)
+    while (nums1[firstfree] != FREE)
         ++firstfree;
     
-    while (firstfree < lastfile)
+    int p1firstfree = firstfree, p1lastfile = lastfile;
+    while (p1firstfree < p1lastfile)
     {
-        DEBUGLOG("firstfree = %d, lastfile = %d\n", firstfree, lastfile);
-        nums[firstfree++] = nums[lastfile];
-        nums[lastfile--] = FREE;
-        while (nums[lastfile] == FREE)
-            --lastfile;
-        while (nums[firstfree] != FREE)
-            ++firstfree;
+        DEBUGLOG("[P1] firstfree = %d, lastfile = %d\n", p1firstfree, p1lastfile);
+        nums1[p1firstfree++] = nums1[p1lastfile];
+        nums1[p1lastfile--] = FREE;
+        while (nums1[p1lastfile] == FREE)
+            --p1lastfile;
+        while (nums1[p1firstfree] != FREE)
+            ++p1firstfree;
     }
     uint64_t sum1 = 0;
     for (int i = 0; i < numpos; ++i)
     {
-        if (nums[i] == FREE)
+        if (nums1[i] == FREE)
             break;
-        sum1 += (i * nums[i]);
+        sum1 += (i * nums1[i]);
     }
 
 #if defined(ENABLE_DEBUGLOG)
     for (int i = 0; i < numpos; ++i)
     {
-        if (nums[i] != FREE)
-            DEBUGLOG("[%d]", nums[i]);
+        if (nums1[i] != FREE)
+            DEBUGLOG("[%d]", nums1[i]);
         else
             DEBUGLOG(".");
     }
@@ -118,84 +89,78 @@ int main(int argc, char** argv)
 
     print_uint64(sum1);
 
+    int p2firstfree = firstfree, p2lastfile = lastfile;
 
-    llspan* p2firstfree = p2head;
-    llspan* p2lastfile = p2tail;
-
-    while (p2firstfree->span.type != TYPE_FREE)
-        p2firstfree = p2firstfree->next;
-    while (p2lastfile->span.type != TYPE_ID)
-        p2lastfile = p2lastfile->prev;
-
-    while (p2firstfree != p2lastfile)
+    int p2furthestfile = 0;
+    while (p2firstfree < p2lastfile)
     {
-        DEBUGLOG("[P2] firstfree = %d, lastfile = %d\n", p2firstfree->span.id, p2lastfile->span.id);
+        const uint8_t filelen = nums2[p2lastfile].len;
 
-        llspan* bigfree = p2firstfree;
-        while (bigfree && bigfree != p2lastfile)
+        int thisfree = p2firstfree;
+        while (nums2[thisfree].file_id != FREE || nums2[thisfree].len < filelen)
         {
-            if (bigfree->span.type == TYPE_FREE && bigfree->span.len >= p2lastfile->span.len)
-                break;
-            bigfree = bigfree->next;
-        }
-        if (!bigfree || bigfree == p2lastfile)
-        {
-            // no matching free space, next file
-            goto nextfile;
-        }
-
-        if (bigfree->span.len == p2lastfile->span.len)
-        {
-            // easymode: just replace
-            span tmp = bigfree->span;
-            bigfree->span = p2lastfile->span;
-            p2lastfile->span = tmp;
-        }
-        else
-        {
-            uint8_t freecount = bigfree->span.len - p2lastfile->span.len;
-            bigfree->span = p2lastfile->span;
-            insert_node(bigfree, (span){FREE, freecount, TYPE_FREE});
-            p2lastfile->span.type = TYPE_FREE;
+            thisfree += nums2[thisfree].len;
+            if (thisfree >= p2lastfile)
+            {
+                if (!p2furthestfile)
+                    p2furthestfile = p2lastfile;
+                goto nextiter;
+            }
         }
 
-    nextfile:
-        p2lastfile = p2lastfile->prev;
-        while (p2lastfile && p2firstfree != p2lastfile && p2lastfile->span.type != TYPE_ID)
-            p2lastfile = p2lastfile->prev;
-        while (p2firstfree && p2firstfree != p2lastfile && p2firstfree->span.type != TYPE_FREE)
-            p2firstfree = p2firstfree->next;
+        const uint8_t freelen = nums2[thisfree].len;
+        memcpy(nums2 + thisfree, nums2 + p2lastfile - nums2[p2lastfile].idx, nums2[p2lastfile].len * sizeof(span));
+
+        for (int i = 0; i < filelen; ++i)
+            nums2[p2lastfile + i - nums2[p2lastfile].idx].file_id = FREE;
+        
+        for (int i = filelen; i < freelen; ++i)
+        {
+            nums2[thisfree + i].idx -= filelen;
+            nums2[thisfree + i].len -= filelen;
+            DEBUGLOG("updated free @ %d --> idx %d len %d\n", thisfree + i, nums2[thisfree + i].idx, nums2[thisfree + i].len);
+        }
+
+        if (thisfree == p2firstfree)
+            p2firstfree += filelen;
+
+        DEBUGLOG("wrote file_id %d len %d, firstfree now %d\n", nums2[thisfree].file_id, filelen, p2firstfree);
+
+    nextiter:
+        p2lastfile -= filelen;
+        while (p2firstfree < p2lastfile && nums2[p2firstfree].file_id != FREE)
+        {
+            DEBUGLOG("firstfree @ %d file id = %d\n", p2firstfree, nums2[p2firstfree].file_id);
+            p2firstfree += nums2[p2firstfree].len - nums2[p2firstfree].idx;
+            DEBUGLOG("updated firstfree --> %d\n", p2firstfree);
+        }
+        while (p2firstfree < p2lastfile && nums2[p2lastfile].file_id == FREE)
+            p2lastfile -= nums2[p2lastfile].idx + 1;
     }
 
 #if defined(ENABLE_DEBUGLOG)
     DEBUGLOG("P2 ");
-    for (llspan* node = p2head; node; node = node->next)
+    for (int i = 0; i < p2furthestfile + 10; ++i)
     {
-        for (int j = 0; j < node->span.len; ++j)
-        {
-            if (node->span.type == TYPE_ID)
-                DEBUGLOG("[%d]", node->span.id);
-            else
-                DEBUGLOG(".");
-        }
+        if (nums2[i].file_id != FREE)
+            DEBUGLOG("[%d]", nums2[i].file_id);
+        else
+            DEBUGLOG(".");
     }
     DEBUGLOG("\n");
 #endif
 
     uint64_t sum2 = 0;
 
-    int p2len = 0;
-    for (llspan* node = p2head; node; node = node->next)
+    int p2idx = 0;
+    while (p2idx < p2furthestfile + 10)
     {
-        if (node->span.type == TYPE_ID)
+        if (nums2[p2idx].file_id != FREE)
         {
-            for (int j = 0; j < node->span.len; ++j)
-                sum2 += (p2len++ * node->span.id);
+            for (int i = 0; i < nums2[p2idx].len; ++i)
+                sum2 += ((p2idx+i) * nums2[p2idx].file_id);
         }
-        else
-        {
-            p2len += node->span.len;
-        }
+        p2idx += nums2[p2idx].len;
     }
 
     print_uint64(sum2);
