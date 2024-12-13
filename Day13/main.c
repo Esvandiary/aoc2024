@@ -68,23 +68,28 @@ int main(int argc, char** argv)
         double amul = 0, bmul = 0;
         solve(ax, bx, ay, by, xresult, yresult, &amul, &bmul);
 
-        if (fmod(amul + 0.0005, 1.0) < 0.001 && fmod(bmul + 0.0005, 1.0) < 0.001)
+        int64_t aimul, bimul;
+
+        aimul = round(amul);
+        bimul = round(bmul);
+        if (aimul < 100 && bimul < 100 && ax * aimul + bx * bimul == xresult && ay * aimul + by * bimul == yresult)
         {
             DEBUGLOG("P1: A [%d,%d] B [%d,%d] aim [%" PRId64 ",%" PRId64 "], amul %.2f, bmul %.2f\n",
                 ax, ay, bx, by, xresult, yresult, amul, bmul);
 
-            if (amul >= 0 && amul < 100 && bmul >= 0 && bmul < 100)
-                sum1 += ((amul+0.0005)*3) + (bmul+0.0005);
+            sum1 += (aimul*3) + bimul;
         }
 
         solve(ax, bx, ay, by, xresult + P2OFFSET, yresult + P2OFFSET, &amul, &bmul);
 
-        if (fmod(amul + 0.0005, 1.0) < 0.001 && fmod(bmul + 0.0005, 1.0) < 0.001)
+        aimul = round(amul);
+        bimul = round(bmul);
+        if (ax * aimul + bx * bimul == xresult + P2OFFSET && ay * aimul + by * bimul == yresult + P2OFFSET)
         {
             DEBUGLOG("P2: A [%d,%d] B [%d,%d] aim [%" PRId64 ",%" PRId64 "], amul %.2f, bmul %.2f\n",
                 ax, ay, bx, by, (int64_t)(xresult + P2OFFSET), (int64_t)(yresult + P2OFFSET), amul, bmul);
 
-            sum2 += ((amul+0.0005)*3) + (bmul+0.0005);
+            sum2 += (aimul*3) + bimul;
         }
     }
 
