@@ -1,15 +1,41 @@
-// #define ENABLE_DEBUGLOG
 #include "../common/mmap.h"
 #include "../common/print.h"
 #include "../common/view.h"
 
 #include <stdbool.h>
+#include <math.h>
 
 #define isdigit(c) ((c) >= '0' && (c) <= '9')
 
 #if !defined(max)
 #define max(a,b) ((a) > (b) ? (a) : (b))
 #endif
+
+#define P2OFFSET 10000000000000LL
+
+void solve(double a, double b, double c, double d, double u, double v, double* x, double* y)
+{
+    if (a > c)
+    {
+        double f = u * c / a;
+        double g = b * c / a;
+        *y = (v - f) / (d - g);
+        if (c != 0)
+            *x = (f - g * (*y)) / c;
+        else
+            *x = (u - b * (*y)) / a;
+    }
+    else
+    {
+        double f = v * a / c;
+        double g = d * a / c;
+        *y = (u - f) / (b - g);
+        if (a != 0)
+            *x = (f - g * (*y)) / a;
+        else
+            *x = (v - d * (*y)) / c;
+    }
+}
 
 int main(int argc, char** argv)
 {
@@ -22,62 +48,48 @@ int main(int argc, char** argv)
     while (idx < fileSize - 2)
     {
         idx += 12; // 'Button A: X+'
-        uint32_t ax = (file.data[idx++] & 0xF)*10 + (file.data[idx++] & 0xF);
+        int32_t ax = (file.data[idx++] & 0xF)*10 + (file.data[idx++] & 0xF);
         idx += 4; // ', Y+'
-        uint32_t ay = (file.data[idx++] & 0xF)*10 + (file.data[idx++] & 0xF);
+        int32_t ay = (file.data[idx++] & 0xF)*10 + (file.data[idx++] & 0xF);
         idx += 13; // '\nButton B: X+'
-        uint32_t bx = (file.data[idx++] & 0xF)*10 + (file.data[idx++] & 0xF);
+        int32_t bx = (file.data[idx++] & 0xF)*10 + (file.data[idx++] & 0xF);
         idx += 4; // ', Y+'
-        uint32_t by = (file.data[idx++] & 0xF)*10 + (file.data[idx++] & 0xF);
+        int32_t by = (file.data[idx++] & 0xF)*10 + (file.data[idx++] & 0xF);
         idx += 10; // '\nPrize: X='
-        uint32_t xresult = 0;
+        int64_t xresult = 0;
         while (idx < fileSize && isdigit(file.data[idx]))
             xresult = (xresult * 10) + (file.data[idx++] & 0xF);
         idx += 4; // ', Y='
-        uint32_t yresult = 0;
+        int64_t yresult = 0;
         while (idx < fileSize && isdigit(file.data[idx]))
             yresult = (yresult * 10) + (file.data[idx++] & 0xF);
         idx += 2; // '\n\n'
 
-        uint32_t xmax = max(ax, bx), ymax = max(ay, by);
-        float xmul = (float)(xresult) / xmax, ymul = (float)(yresult) / ymax;
+        double amul = 0, bmul = 0;
+        solve(ax, bx, ay, by, xresult, yresult, &amul, &bmul);
 
-        bool afirst = (xmul > (ymul * 3)) ? (xmax == ax) : (ymax == ay);
-        bool xprimary = (xmul <= ymul);
-
-        DEBUGLOG("A [%u,%u] B [%u,%u] aim [%u,%u] max [%u,%u] mul [%.2f,%.2f], i1=%c%c, i2=%c%c, j1=%c%c, j2=%c%c\n",
-            ax, ay, bx, by, xresult, yresult, xmax, ymax, xmul, ymul,
-            afirst ? 'a' : 'b', xprimary ? 'x' : 'y', afirst ? 'a' : 'b', xprimary ? 'y' : 'x',
-            afirst ? 'b' : 'a', xprimary ? 'x' : 'y', afirst ? 'b' : 'a', xprimary ? 'y' : 'x');
-
-        uint32_t i1 = (afirst ? (xprimary ? ax : ay) : (xprimary ? bx : by));
-        uint32_t i2 = (afirst ? (xprimary ? ay : ax) : (xprimary ? by : bx));
-        uint32_t j1 = (afirst ? (xprimary ? bx : by) : (xprimary ? ax : ay));
-        uint32_t j2 = (afirst ? (xprimary ? by : bx) : (xprimary ? ay : ax));
-        uint32_t n1result = (xprimary ? xresult : yresult);
-        uint32_t n2result = (xprimary ? yresult : xresult);
-
-        int32_t i1cur = 0, i2cur = 0;
-        for (int i = 0; i < 100 && i1cur < n1result; ++i)
+        if (fmod(amul + 0.0005, 1.0) < 0.001 && fmod(bmul + 0.0005, 1.0) < 0.001)
         {
-            // DEBUGLOG("[%d] i1 = %d, i2 = %d\n", i, i1cur, i2cur);
-            if (((n2result - i2cur) % j2) == 0)
-            {
-                int32_t c2mul = (n2result - i2cur) / j2;
-                DEBUGLOG("[%d] n2 match with mul %d\n", i, c2mul);
-                if (i1cur + (c2mul * j1) == n1result)
-                {
-                    DEBUGLOG("n1 match\n");
-                    sum1 += (i1cur / i1)*(afirst ? 3 : 1) + c2mul*(afirst ? 1 : 3);
-                    break;
-                }
-            }
-            i1cur += i1;
-            i2cur += i2;
+            DEBUGLOG("P1: A [%d,%d] B [%d,%d] aim [%" PRId64 ",%" PRId64 "], amul %.2f, bmul %.2f\n",
+                ax, ay, bx, by, xresult, yresult, amul, bmul);
+
+            if (amul >= 0 && amul < 100 && bmul >= 0 && bmul < 100)
+                sum1 += ((amul+0.0005)*3) + (bmul+0.0005);
+        }
+
+        solve(ax, bx, ay, by, xresult + P2OFFSET, yresult + P2OFFSET, &amul, &bmul);
+
+        if (fmod(amul + 0.0005, 1.0) < 0.001 && fmod(bmul + 0.0005, 1.0) < 0.001)
+        {
+            DEBUGLOG("P2: A [%d,%d] B [%d,%d] aim [%" PRId64 ",%" PRId64 "], amul %.2f, bmul %.2f\n",
+                ax, ay, bx, by, (int64_t)(xresult + P2OFFSET), (int64_t)(yresult + P2OFFSET), amul, bmul);
+
+            sum2 += ((amul+0.0005)*3) + (bmul+0.0005);
         }
     }
 
-    print_uint64(sum1);
+    print_int64(sum1);
+    print_int64(sum2);
 
     return 0;
 }
