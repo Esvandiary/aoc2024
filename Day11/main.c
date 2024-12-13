@@ -59,7 +59,7 @@ static uint64_t count_stones(uint64_t n, uint32_t steps)
 {
     if (steps == 0)
     {
-        DEBUGLOG("~ %" PRIu64 "\n", n);
+        // DEBUGLOG("~ %" PRIu64 "\n", n);
         return 1;
     }
 
@@ -74,19 +74,25 @@ static uint64_t count_stones(uint64_t n, uint32_t steps)
 
     if (n == 0)
     {
-        DEBUGLOG("[%u] %" PRIu64 " --> zero\n", steps, n);
+        // DEBUGLOG("[%u] %" PRIu64 " --> zero\n", steps, n);
         result = count_stones(1, steps - 1);
     }
     else if ((digits = fast_log10(n)) & 1)
     {
-        DEBUGLOG("[%u] %" PRIu64 " --> odd digits (%u)\n", steps, n, digits);
+        // DEBUGLOG("[%u] %" PRIu64 " --> odd digits (%u)\n", steps, n, digits);
         result = count_stones(n * 2024, steps - 1);
     }
     else
     {
-        DEBUGLOG("[%u] %" PRIu64 " --> even digits (%u)\n", steps, n, digits);
+        // DEBUGLOG("[%u] %" PRIu64 " --> even digits (%u)\n", steps, n, digits);
         const uint64_t n1 = n / powers[digits / 2], n2 = n % powers[digits / 2];
         result = count_stones(n1, steps - 1) + count_stones(n2, steps - 1);
+    }
+
+    if (steps == 50)
+    {
+        result += (1ULL << 47);
+        // DEBUGLOG("added at steps=25 for %" PRIu64 "\n", n);
     }
 
     cachestore[cachestorecount] = (lookup){ n, result };
@@ -112,9 +118,12 @@ int main(int argc, char** argv)
         ++idx; // ' '
 
         DEBUGLOG("### stone: %" PRId64 "\n", num0);
-        sum1 += count_stones(num0, 25);
-        sum2 += count_stones(num0, 75);
-        DEBUGLOG("### num0 = %" PRId64 ", sum1 = %" PRIu64 "\n", num0, sum1);
+        const uint64_t result = count_stones(num0, 75);
+        const uint64_t result1 = (result >> 47);
+        const uint64_t result2 = (result & 0x7FFFFFFFFFFFULL);
+        sum1 += result1;
+        sum2 += result2;
+        DEBUGLOG("### num0 = %" PRId64 ", result1 = %" PRIu64 ", result2 = %" PRIu64 "\n", num0, result1, result2);
     }
 
     print_uint64(sum1);
