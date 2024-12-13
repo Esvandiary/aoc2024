@@ -27,11 +27,11 @@ static const uint64_t powers[20] = {
     1000000000000000ULL, 10000000000000000ULL, 100000000000000000ULL,
     1000000000000000000ULL, 10000000000000000000ULL,
 };
-static const unsigned maxdigits[65] = {
+static const uint8_t maxdigits[64] = {
     1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5,
     5, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 10, 10, 10, 
     10, 11, 11, 11, 12, 12, 12, 13, 13, 13, 13, 14, 14, 14, 15, 15,
-    15, 16, 16, 16, 16, 17, 17, 17, 18, 18, 18, 19, 19, 19, 19
+    15, 16, 16, 16, 16, 17, 17, 17, 18, 18, 18, 19, 19, 19
 };
 
 static inline FORCEINLINE uint64_t fast_log10(uint64_t n)
@@ -89,12 +89,6 @@ static uint64_t count_stones(uint64_t n, uint32_t steps)
         result = count_stones(n1, steps - 1) + count_stones(n2, steps - 1);
     }
 
-    if (steps == 50)
-    {
-        result += (1ULL << 47);
-        // DEBUGLOG("added at steps=25 for %" PRIu64 "\n", n);
-    }
-
     cachestore[cachestorecount] = (lookup){ n, result };
     HASH_ADD_PTR(cache[steps], value, cachestore + cachestorecount);
     ++cachestorecount;
@@ -118,9 +112,8 @@ int main(int argc, char** argv)
         ++idx; // ' '
 
         DEBUGLOG("### stone: %" PRId64 "\n", num0);
-        const uint64_t result = count_stones(num0, 75);
-        const uint64_t result1 = (result >> 47);
-        const uint64_t result2 = (result & 0x7FFFFFFFFFFFULL);
+        const uint64_t result2 = count_stones(num0, 75);
+        const uint64_t result1 = count_stones(num0, 25);
         sum1 += result1;
         sum2 += result2;
         DEBUGLOG("### num0 = %" PRId64 ", result1 = %" PRIu64 ", result2 = %" PRIu64 "\n", num0, result1, result2);
