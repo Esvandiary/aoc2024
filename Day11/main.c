@@ -75,19 +75,17 @@ static uint64_t count_stones(uint64_t n, uint32_t steps)
     if (n == 0)
     {
         // DEBUGLOG("[%u] %" PRIu64 " --> zero\n", steps, n);
-        result = count_stones(1, steps - 1);
+        return count_stones(1, steps - 1);
     }
     else if ((digits = fast_log10(n)) & 1)
     {
         // DEBUGLOG("[%u] %" PRIu64 " --> odd digits (%u)\n", steps, n, digits);
-        result = count_stones(n * 2024, steps - 1);
+        return count_stones(n * 2024, steps - 1);
     }
-    else
-    {
-        // DEBUGLOG("[%u] %" PRIu64 " --> even digits (%u)\n", steps, n, digits);
-        const uint64_t n1 = n / powers[digits / 2], n2 = n % powers[digits / 2];
-        result = count_stones(n1, steps - 1) + count_stones(n2, steps - 1);
-    }
+
+    // DEBUGLOG("[%u] %" PRIu64 " --> even digits (%u)\n", steps, n, digits);
+    const uint64_t n1 = n / powers[digits / 2], n2 = n % powers[digits / 2];
+    result = count_stones(n1, steps - 1) + count_stones(n2, steps - 1);
 
     cachestore[cachestorecount] = (lookup){ n, result };
     HASH_ADD_PTR(cache[steps], value, cachestore + cachestorecount);
