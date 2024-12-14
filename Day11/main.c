@@ -102,7 +102,7 @@ int main(int argc, char** argv)
     uint64_t sum1 = 0, sum2 = 0;
 
     int idx = 0;
-    while (idx < fileSize - 1)
+    while (idx < fileSize)
     {
         int64_t num0 = 0;
         while (idx < fileSize && isdigit(file.data[idx]))
