@@ -6,6 +6,9 @@
 
 #define isdigit(c) ((c) >= '0' && (c) <= '9')
 
+#define width 101
+#define height 103
+
 typedef struct robot
 {
     int64_t px;
@@ -22,11 +25,9 @@ int main(int argc, char** argv)
     mmap_file file = mmap_file_open_ro("input.txt");
     const int fileSize = (int)(file.size);
 
-    const int64_t width = 101;
-    const int64_t height = 103;
     const int64_t p1iters = 100;
 
-    uint8_t* grid = (uint8_t*)calloc(width*height, sizeof(uint8_t));
+    uint8_t grid[width*height] = {0};
 
     uint64_t sum1 = 0, sum2 = 0;
 
@@ -84,7 +85,7 @@ int main(int argc, char** argv)
         }
     }
 
-#if defined(ENABLE_DEBUGLOG)
+#if defined(ENABLE_DEBUGLOG) && defined(SPAM)
     for (int y = 0; y < height; ++y)
     {
         for (int x = 0; x < width; ++x)
@@ -94,42 +95,82 @@ int main(int argc, char** argv)
         }
         DEBUGLOG("\n");
     }
-    DEBUGLOG("P1 quadrants: [%" PRId64 ", %" PRId64 ", %" PRId64 ", %" PRId64 "]\n", quadrants[0], quadrants[1], quadrants[2], quadrants[3]);
 #endif
+    DEBUGLOG("P1 quadrants: [%" PRId64 ", %" PRId64 ", %" PRId64 ", %" PRId64 "]\n", quadrants[0], quadrants[1], quadrants[2], quadrants[3]);
 
     sum1 = (quadrants[0] * quadrants[1] * quadrants[2] * quadrants[3]);
 
     print_uint64(sum1);
 
-    int64_t p2iters = 0;
     int64_t hcandidate = -1;
     int64_t vcandidate = -1;
-    while (++p2iters < 10000 && (hcandidate < 0 || vcandidate < 0))
+    uint8_t xcount[width] = {0};
+    uint8_t ycount[height] = {0};
+    while (sum2 < 10000 && (hcandidate < 0 || vcandidate < 0))
     {
         ++sum2;
 
-        int hsegs[3] = {0};
-        int vsegs[3] = {0};
+        memset(xcount, 0, sizeof(xcount));
+        memset(ycount, 0, sizeof(ycount));
 
         for (int i = 0; i < robotcount; ++i)
         {
             robots[i].px = (robots[i].px + robots[i].vx) % width;
             robots[i].py = (robots[i].py + robots[i].vy) % height;
 
-            ++hsegs[3 * robots[i].px / width];
-            ++vsegs[3 * robots[i].py / height];
+            ++xcount[robots[i].px];
+            ++ycount[robots[i].py];
         }
 
-        if (hsegs[1] >= hsegs[0] * 3 / 2 && hsegs[1] >= hsegs[2] * 3 / 2)
+        int xover30 = 0, yover30 = 0;
+        for (int x = 0; x < width; ++x)
         {
-            DEBUGLOG("H candidate: %" PRIu64 "\n", sum2);
-            hcandidate = sum2;
+            if (xcount[x] >= 30)
+                ++xover30;
         }
-        if (vsegs[1] >= vsegs[0] * 3 / 2 && vsegs[1] >= vsegs[2] * 3 / 2)
+        for (int y = 0; y < height; ++y)
+        {
+            if (ycount[y] >= 30)
+                ++yover30;
+        }
+
+        if (xover30 >= 2)
         {
             DEBUGLOG("V candidate: %" PRIu64 "\n", sum2);
             vcandidate = sum2;
         }
+        if (yover30 >= 2)
+        {
+            DEBUGLOG("H candidate: %" PRIu64 "\n", sum2);
+            hcandidate = sum2;
+        }
+
+#if defined(ENABLE_DEBUGLOG) && defined(SPAM)
+        DEBUGLOG("[%" PRIu64 "]\n", sum2);
+        memset(grid, 0, width*height*sizeof(uint8_t));
+        for (int i = 0; i < robotcount; ++i)
+            ++grid[robots[i].py * width + robots[i].px];
+        int ycnt[101] = {0};
+        for (int y = 0; y < height; ++y)
+        {
+            int xcnt = 0;
+            for (int x = 0; x < width; ++x)
+            {
+                uint8_t v = grid[y*width+x];
+                xcnt += v;
+                ycnt[x] += v;
+                DEBUGLOG("%c", v > 0 ? v + 48 : '.');
+            }
+            DEBUGLOG("  %d\n", xcnt);
+        }
+        DEBUGLOG("\n\n");
+        for (int x = 0; x < width; ++x)
+            DEBUGLOG("%c", ycnt[x] >= 10 ? (ycnt[x]/10) + 48 : ' ');
+        DEBUGLOG("\n");
+        for (int x = 0; x < width; ++x)
+            DEBUGLOG("%c", (ycnt[x] % 10) + 48);
+        DEBUGLOG("\n\n\n");
+#endif
     }
 
     if (hcandidate >= 0 && vcandidate >= 0)
@@ -137,9 +178,9 @@ int main(int argc, char** argv)
         do
         {
             if (hcandidate < vcandidate)
-                hcandidate += width;
+                hcandidate += height;
             else
-                vcandidate += height;
+                vcandidate += width;
         } while (hcandidate != vcandidate);
 
         sum2 = vcandidate;
