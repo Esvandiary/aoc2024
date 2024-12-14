@@ -24,7 +24,7 @@ int main(int argc, char** argv)
 
     const int64_t width = 101;
     const int64_t height = 103;
-    const int64_t iters = 100;
+    const int64_t p1iters = 100;
 
     uint8_t* grid = (uint8_t*)calloc(width*height, sizeof(uint8_t));
 
@@ -67,8 +67,8 @@ int main(int argc, char** argv)
 
         robots[robotcount++] = (robot) { px, py, vx, vy };
 
-        int64_t px100 = (px + (vx * iters)) % width;
-        int64_t py100 = (py + (vy * iters)) % height;
+        int64_t px100 = (px + (vx * p1iters)) % width;
+        int64_t py100 = (py + (vy * p1iters)) % height;
 
         if (px100 != width/2 && py100 != height/2)
         {
@@ -101,9 +101,10 @@ int main(int argc, char** argv)
 
     print_uint64(sum1);
 
+    int64_t p2iters = 0;
     int64_t hcandidate = -1;
     int64_t vcandidate = -1;
-    while (hcandidate < 0 || vcandidate < 0)
+    while (++p2iters < 10000 && (hcandidate < 0 || vcandidate < 0))
     {
         ++sum2;
 
@@ -119,29 +120,35 @@ int main(int argc, char** argv)
             ++vsegs[3 * robots[i].py / height];
         }
 
-        if (hsegs[1] >= hsegs[0] + hsegs[2])
+        if (hsegs[1] >= hsegs[0] * 3 / 2 && hsegs[1] >= hsegs[2] * 3 / 2)
         {
             DEBUGLOG("H candidate: %" PRIu64 "\n", sum2);
             hcandidate = sum2;
         }
-        if (vsegs[1] >= vsegs[0] + vsegs[2])
+        if (vsegs[1] >= vsegs[0] * 3 / 2 && vsegs[1] >= vsegs[2] * 3 / 2)
         {
             DEBUGLOG("V candidate: %" PRIu64 "\n", sum2);
             vcandidate = sum2;
         }
     }
 
-    do
+    if (hcandidate >= 0 && vcandidate >= 0)
     {
-        if (hcandidate < vcandidate)
-            hcandidate += width;
-        else
-            vcandidate += height;
-    } while (hcandidate != vcandidate);
-    
-    sum2 = vcandidate;
+        do
+        {
+            if (hcandidate < vcandidate)
+                hcandidate += width;
+            else
+                vcandidate += height;
+        } while (hcandidate != vcandidate);
 
-    print_uint64(sum2);
+        sum2 = vcandidate;
+        print_uint64(sum2);
+    }
+    else
+    {
+        printf("FAIL\n");
+    }
 
     return 0;
 }
