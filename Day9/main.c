@@ -34,7 +34,6 @@ int main(int argc, char** argv)
         {
             int file_len = file.data[ridx] - 48;
             int lafreelen = (file.data[laidx] - 48) - freeidcount[laidx];
-            DEBUGLOG("laidx = %d, ridx = %d, file len = %d, free len = %d\n", laidx, ridx, file_len, lafreelen);
             if (file_len <= lafreelen)
             {
                 DEBUGLOG("[P2] move: %d len %d --> %d\n", FILEID(ridx), file_len, laidx);
@@ -87,8 +86,10 @@ int main(int argc, char** argv)
         }
         else
         {
+#if defined(ENABLE_DEBUGLOG)
             for (int i = 0; i < freeidcount[idx]; ++i)
                 DEBUGLOG("[P2] [%d] FREE\n", p2numpos + i);
+#endif
             p2numpos += freeidcount[idx];
         }
 
@@ -104,8 +105,10 @@ int main(int argc, char** argv)
             sum2 += p2numpos++ * freeid[idx][i];
             --p2freelen;
         }
+#if defined(ENABLE_DEBUGLOG)
         for (int i = 0; i < p2freelen; ++i)
             DEBUGLOG("[P2] [%d] FREE\n", p2numpos + i);
+#endif
         p2numpos += p2freelen;
 
         if (idx < ridx)
@@ -122,9 +125,11 @@ int main(int argc, char** argv)
                 }
                 if (free_len)
                 {
-                    while (p1currlen == 0 && idx < ridx)
+                    while (p1currlen == 0)
                     {
                         ridx -= 2;
+                        if (idx >= ridx)
+                            break;
                         p1currlen = file.data[ridx] - 48;
                     }
                 }
