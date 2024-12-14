@@ -4,165 +4,143 @@
 
 #define isdigit(c) ((c) >= '0' && (c) <= '9')
 
-#if !defined(min)
-    #define min(x,y) (((x) < (y)) ? (x) : (y))
-#endif
+static uint16_t freeid[32768][9];
+static uint8_t freeidcount[32768];
 
-static int16_t nums1[262144];
-
-typedef struct span
-{
-    int16_t file_id;
-    int8_t len;
-    int8_t idx;
-} span;
-
-static span nums2[262144];
-
-#define FREE -1
+#define FILEID(n) ((n) >> 1)
 
 int main(int argc, char** argv)
 {
     mmap_file file = mmap_file_open_ro("input.txt");
     const int fileSize = (int)(file.size);
 
-    int idx = 0;
-    int16_t file_id = 0;
-    int numpos = 0;
-    while (idx < fileSize && isdigit(file.data[idx]))
-    {
-        int file_len = file.data[idx++] - 48;
-        int free_len = file.data[idx++] - 48;
+    const int datasize = fileSize - ((file.data[fileSize-1] == '\n') ? 1 : 0);
+    const int freecount = datasize / 2;
+    const int filecount = datasize - freecount;
 
-        for (int i = 0; i < file_len; ++i)
+    const int lastfileidx = filecount * 2 - 2;
+
+    DEBUGLOG("datasize = %d, filecount = %d, freecount = %d\n", datasize, filecount, freecount);
+
+    uint64_t sum1 = 0, sum2 = 0;
+
+    int idx = 1, ridx = lastfileidx;
+
+    while (idx < ridx && isdigit(file.data[idx]))
+    {
+        int free_len = (file.data[idx] - 48) - freeidcount[idx];
+        int laidx = idx;
+        while (laidx < ridx && free_len)
         {
-            nums1[numpos] = file_id;
-            nums2[numpos] = (struct span) { file_id, file_len, i };
-            ++numpos;
-        }
-        for (int i = 0; i < free_len; ++i)
-        {
-            nums1[numpos] = FREE;
-            nums2[numpos] = (struct span) { FREE, free_len, i };
-            ++numpos;
-        }
-
-        ++file_id;
-    }
-
-    int lastfile = numpos-1;
-    while (nums1[lastfile] == FREE)
-        --lastfile;
-    int firstfree = 0;
-    while (nums1[firstfree] != FREE)
-        ++firstfree;
-    
-    int p1firstfree = firstfree, p1lastfile = lastfile;
-    while (p1firstfree < p1lastfile)
-    {
-        DEBUGLOG("[P1] firstfree = %d, lastfile = %d\n", p1firstfree, p1lastfile);
-        nums1[p1firstfree++] = nums1[p1lastfile];
-        nums1[p1lastfile--] = FREE;
-        while (nums1[p1lastfile] == FREE)
-            --p1lastfile;
-        while (nums1[p1firstfree] != FREE)
-            ++p1firstfree;
-    }
-    uint64_t sum1 = 0;
-    for (int i = 0; i < numpos; ++i)
-    {
-        if (nums1[i] == FREE)
-            break;
-        sum1 += (i * nums1[i]);
-    }
-
-#if defined(ENABLE_DEBUGLOG)
-    for (int i = 0; i < numpos; ++i)
-    {
-        if (nums1[i] != FREE)
-            DEBUGLOG("[%d]", nums1[i]);
-        else
-            DEBUGLOG(".");
-    }
-    DEBUGLOG("\n");
-#endif
-
-    print_uint64(sum1);
-
-    int p2firstfree = firstfree, p2lastfile = lastfile;
-
-    int p2furthestfile = 0;
-    while (p2firstfree < p2lastfile)
-    {
-        const uint8_t filelen = nums2[p2lastfile].len;
-
-        int thisfree = p2firstfree;
-        while (nums2[thisfree].file_id != FREE || nums2[thisfree].len < filelen)
-        {
-            thisfree += nums2[thisfree].len;
-            if (thisfree >= p2lastfile)
+            int file_len = file.data[ridx] - 48;
+            int lafreelen = (file.data[laidx] - 48) - freeidcount[laidx];
+            DEBUGLOG("laidx = %d, ridx = %d, file len = %d, free len = %d\n", laidx, ridx, file_len, lafreelen);
+            if (file_len <= lafreelen)
             {
-                if (!p2furthestfile)
-                    p2furthestfile = p2lastfile;
-                goto nextiter;
+                DEBUGLOG("[P2] move: %d len %d --> %d\n", FILEID(ridx), file_len, laidx);
+                for (int i = 0; i < file_len; ++i)
+                    freeid[laidx][freeidcount[laidx]++] = FILEID(ridx);
+                freeidcount[ridx] = file_len;
+                if (idx == laidx)
+                    free_len -= file_len;
+                ridx -= 2;
+                laidx = idx;
+            }
+            else
+            {
+                laidx += 2;
+                if (laidx >= ridx)
+                {
+                    // no match for this file, reset and continue
+                    ridx -= 2;
+                    laidx = idx;
+                }
+            }
+        }
+        idx += 2;
+    }
+
+    idx = 0; ridx = lastfileidx;
+    int p1currlen = file.data[ridx] - 48;
+    int p1numpos = 0, p2numpos = 0;
+
+    while (idx <= lastfileidx && isdigit(file.data[idx]))
+    {
+        int file_len = file.data[idx] - 48;
+        if (idx < ridx)
+        {
+            // P1: handle file
+            for (int i = 0; i < file_len; ++i)
+            {
+                DEBUGLOG("[P1] [%d] FILE +++ %d * %d\n", p1numpos, p1numpos, FILEID(idx));
+                sum1 += p1numpos++ * FILEID(idx);
+            }
+        }
+        // P2: handle file
+        if (!freeidcount[idx])
+        {
+            for (int i = 0; i < file_len; ++i)
+            {
+                DEBUGLOG("[P2] [%d] FILE +++ %d * %d\n", p2numpos, p2numpos, FILEID(idx));
+                sum2 += p2numpos++ * FILEID(idx);
+            }
+        }
+        else
+        {
+            for (int i = 0; i < freeidcount[idx]; ++i)
+                DEBUGLOG("[P2] [%d] FREE\n", p2numpos + i);
+            p2numpos += freeidcount[idx];
+        }
+
+        ++idx;
+
+        int free_len = file.data[idx] - 48;
+
+        // P2: apply any moved files
+        int p2freelen = free_len;
+        for (int i = 0; i < freeidcount[idx]; ++i)
+        {
+            DEBUGLOG("[P2] [%d] MOVD +++ %d * %u\n", p2numpos, p2numpos, freeid[idx][i]);
+            sum2 += p2numpos++ * freeid[idx][i];
+            --p2freelen;
+        }
+        for (int i = 0; i < p2freelen; ++i)
+            DEBUGLOG("[P2] [%d] FREE\n", p2numpos + i);
+        p2numpos += p2freelen;
+
+        if (idx < ridx)
+        {
+            // P1: handle free
+            while (idx < ridx && free_len)
+            {
+                while (p1currlen && free_len)
+                {
+                    DEBUGLOG("[P1] [%d] MOVD +++ %d * %d\n", p1numpos, p1numpos, FILEID(ridx));
+                    sum1 += p1numpos++ * FILEID(ridx);
+                    --p1currlen;
+                    --free_len;
+                }
+                if (free_len)
+                {
+                    while (p1currlen == 0 && idx < ridx)
+                    {
+                        ridx -= 2;
+                        p1currlen = file.data[ridx] - 48;
+                    }
+                }
             }
         }
 
-        const uint8_t freelen = nums2[thisfree].len;
-        memcpy(nums2 + thisfree, nums2 + p2lastfile - nums2[p2lastfile].idx, nums2[p2lastfile].len * sizeof(span));
-
-        for (int i = 0; i < filelen; ++i)
-            nums2[p2lastfile + i - nums2[p2lastfile].idx].file_id = FREE;
-        
-        for (int i = filelen; i < freelen; ++i)
-        {
-            nums2[thisfree + i].idx -= filelen;
-            nums2[thisfree + i].len -= filelen;
-            DEBUGLOG("updated free @ %d --> idx %d len %d\n", thisfree + i, nums2[thisfree + i].idx, nums2[thisfree + i].len);
-        }
-
-        if (thisfree == p2firstfree)
-            p2firstfree += filelen;
-
-        DEBUGLOG("wrote file_id %d len %d, firstfree now %d\n", nums2[thisfree].file_id, filelen, p2firstfree);
-
-    nextiter:
-        p2lastfile -= filelen;
-        while (p2firstfree < p2lastfile && nums2[p2firstfree].file_id != FREE)
-        {
-            DEBUGLOG("firstfree @ %d file id = %d\n", p2firstfree, nums2[p2firstfree].file_id);
-            p2firstfree += nums2[p2firstfree].len - nums2[p2firstfree].idx;
-            DEBUGLOG("updated firstfree --> %d\n", p2firstfree);
-        }
-        while (p2firstfree < p2lastfile && nums2[p2lastfile].file_id == FREE)
-            p2lastfile -= nums2[p2lastfile].idx + 1;
+        ++idx;
     }
-
-#if defined(ENABLE_DEBUGLOG)
-    DEBUGLOG("P2 ");
-    for (int i = 0; i < p2furthestfile + 10; ++i)
+    while (p1currlen)
     {
-        if (nums2[i].file_id != FREE)
-            DEBUGLOG("[%d]", nums2[i].file_id);
-        else
-            DEBUGLOG(".");
-    }
-    DEBUGLOG("\n");
-#endif
-
-    uint64_t sum2 = 0;
-
-    int p2idx = 0;
-    while (p2idx < p2furthestfile + 10)
-    {
-        if (nums2[p2idx].file_id != FREE)
-        {
-            for (int i = 0; i < nums2[p2idx].len; ++i)
-                sum2 += ((p2idx+i) * nums2[p2idx].file_id);
-        }
-        p2idx += nums2[p2idx].len;
+        DEBUGLOG("[P1] END +++ %d * %d\n", p1numpos, FILEID(ridx));
+        sum1 += p1numpos++ * FILEID(ridx);
+        --p1currlen;
     }
 
+    print_uint64(sum1);
     print_uint64(sum2);
 
     return 0;
