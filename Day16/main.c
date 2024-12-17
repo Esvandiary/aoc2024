@@ -24,27 +24,42 @@ static const char* dirnames[] = {
     "left"
 };
 
+static const int dirdx[] = {
+    0,
+    1,
+    0,
+    -1
+};
+
+static const int dirdy[] = {
+    -1,
+    0,
+    1,
+    0
+};
+
 static uint32_t grid[160][160][4];
-static uint32_t best = 0;
+static uint32_t best = UINT32_MAX;
 
 static uint64_t gridfast[160][3];
 
 static bool fill(const char* data, int linewidth, int x, int y, dir d, uint32_t score)
 {
     const char cur = data[IDXOF(x,y)];
+    if (score > best)
+        return false;
     if (cur == '#')
         return false;
     if (cur == 'E')
     {
-        if (best && score > best)
-            return false;
-        if (!best || score < best)
+        if (score < best)
         {
             DEBUGLOG("[END] score %u beats %u, clearing grid\n", score, best);
             memset(gridfast, 0, sizeof(gridfast));
             gridfast[y][x >> 6] |= ((uint64_t)1 << (x & 0x3F));
+
+            best = score;
         }
-        best = score;
         return true;
     }
 
@@ -53,15 +68,12 @@ static bool fill(const char* data, int linewidth, int x, int y, dir d, uint32_t 
         grid[y][x][d] = score;
 
         bool result = false;
-        if (d != RIGHT)
-            result = fill(data, linewidth, x-1, y, LEFT, score + (d == LEFT ? 1 : 1001)) || result;
-        if (d != DOWN)
-            result = fill(data, linewidth, x, y-1, UP, score + (d == UP ? 1 : 1001)) || result;
-        if (d != LEFT)
-            result = fill(data, linewidth, x+1, y, RIGHT, score + (d == RIGHT ? 1 : 1001)) || result;
-        if (d != UP)
-            result = fill(data, linewidth, x, y+1, DOWN, score + (d == DOWN ? 1 : 1001)) || result;
-        
+        result = fill(data, linewidth, x + dirdx[d], y + dirdy[d], d, score + 1) || result;
+        dir ndl = (d + 1) % 4;
+        result = fill(data, linewidth, x + dirdx[ndl], y + dirdy[ndl], ndl, score + 1001) || result;
+        dir ndr = (d + 3) % 4;
+        result = fill(data, linewidth, x + dirdx[ndr], y + dirdy[ndr], ndr, score + 1001) || result;
+
         if (result)
             gridfast[y][x >> 6] |= ((uint64_t)1 << (x & 0x3F));
 
