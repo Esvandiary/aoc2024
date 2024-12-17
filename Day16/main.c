@@ -1,6 +1,7 @@
 #include "../common/mmap.h"
 #include "../common/print.h"
 #include "../common/view.h"
+#include "astar.h"
 
 #include <stdbool.h>
 #include <nmmintrin.h>
@@ -42,6 +43,8 @@ static uint32_t grid[160][160][4];
 static uint32_t best = UINT32_MAX;
 
 static uint64_t gridfast[160][3];
+
+static astar_node nodes[262144];
 
 static bool fill(const char* data, int linewidth, int x, int y, dir d, uint32_t score)
 {
@@ -110,22 +113,40 @@ int main(int argc, char** argv)
     int sx = 0, sy = 0, ex = 0, ey = 0;
     while (idx < fileSize)
     {
-        if (file.data[idx] == 'S')
+        const char c = file.data[idx];
+        if (c == 'S')
         {
             sx = POSX(idx);
             sy = POSY(idx);
-            if (sx && ex)
-                break;
         }
-        else if (file.data[idx] == 'E')
+        else if (c == 'E')
         {
             ex = POSX(idx);
             ey = POSY(idx);
-            if (sx && ex)
-                break;
         }
+
+        if (c == '.' || c == 'S' || c == 'E')
+        {
+            for (int dir = 0; dir < 4; ++dir)
+            {
+                nodes[idx*4 + dir] = (astar_node) {
+                    .pos = (astar_pos) {.y = POSY(idx), .x = POSX(idx) },
+                    .dir = dir,
+                    .fScore = INT64_MAX,
+                    .traversed = false,
+                };
+            }
+        }
+
         ++idx;
     }
+
+    best = calculate(
+        nodes,
+        height,
+        linewidth,
+        (astar_pos) { .y = sy, .x = sx },
+        (astar_pos) { .y = ey, .x = ex });
 
     DEBUGLOG("start = [%d,%d], end = [%d,%d]\n", sx, sy, ex, ey);
     fill(file.data, linewidth, sx, sy, RIGHT, 0);
