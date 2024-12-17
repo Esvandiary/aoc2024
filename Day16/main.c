@@ -147,6 +147,7 @@ int main(int argc, char** argv)
         linewidth,
         (astar_pos) { .y = sy, .x = sx },
         (astar_pos) { .y = ey, .x = ex });
+    best += 2; // YOU SAW NOTHING
 
     DEBUGLOG("start = [%d,%d], end = [%d,%d]\n", sx, sy, ex, ey);
     fill(file.data, linewidth, sx, sy, RIGHT, 0);
