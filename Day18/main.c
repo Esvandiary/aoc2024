@@ -64,7 +64,21 @@ int main(int argc, char** argv)
         ++grid[y][x];
 
         if (++blocks == blockcount)
-            break;
+        {
+            p1steps(sx, sy, ex, ey, 1);
+            uint64_t sum1 = gridbest[ey][ex] - 1;
+            print_uint64(sum1);
+        }
+        else if (blocks > blockcount)
+        {
+            memset(gridbest, 0, sizeof(gridbest));
+            p1steps(sx, sy, ex, ey, 1);
+            if (!gridbest[ey][ex])
+            {
+                printf("%u,%u\n", x, y);
+                break;
+            }
+        }
     }
 
 #if defined(ENABLE_DEBUGLOG)
@@ -75,11 +89,6 @@ int main(int argc, char** argv)
         DEBUGLOG("\n");
     }
 #endif
-
-    p1steps(sx, sy, ex, ey, 1);
-
-    uint64_t sum1 = gridbest[ey][ex] - 1;
-    print_uint64(sum1);
 
     return 0;
 }
