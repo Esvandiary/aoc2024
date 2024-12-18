@@ -1,6 +1,7 @@
 #include "../common/mmap.h"
 #include "../common/print.h"
 #include "../common/view.h"
+#include "astar.h"
 
 #include <stdbool.h>
 
@@ -12,42 +13,41 @@ typedef struct pos
     uint32_t y;
 } pos;
 
-static uint32_t grid[71][71];
-static uint32_t gridbest[71][71];
 static pos bestpath[1024];
 static uint32_t bestpathcount;
 static const uint32_t gw = 71;
 static const uint32_t gh = 71;
 static const int p1blockcount = 1024;
 
-static bool p1steps(uint32_t x, uint32_t y, uint32_t ex, uint32_t ey, uint32_t steps)
-{
-    // DEBUGLOG("[%u] running for %u,%u\n", steps, x, y);
-    if (!gridbest[y][x] || steps < gridbest[y][x])
-        gridbest[y][x] = steps;
-    else
-        return false;
+static astar_node nodes[16384];
 
-    if (x == ex && y == ey)
+static int64_t astarsteps(uint32_t sx, uint32_t sy, uint32_t ex, uint32_t ey)
+{
+    for (int y = 0; y < gh; ++y)
     {
-        bestpath[steps-1] = (pos) { x, y };
-        bestpathcount = steps;
-        return true;
+        for (int x = 0; x < gw; ++x)
+        {
+            nodes[y*gw + x].fScore = INT64_MAX;
+            nodes[y*gw + x].traversed = false;
+        }
     }
 
-    bool result = false;
-    if (x > 0 && !grid[y][x-1])
-        result = p1steps(x-1, y, ex, ey, steps + 1) || result;
-    if (y > 0 && !grid[y-1][x])
-        result = p1steps(x, y-1, ex, ey, steps + 1) || result;
-    if (x+1 < gw && !grid[y][x+1])
-        result = p1steps(x+1, y, ex, ey, steps + 1) || result;
-    if (y+1 < gh && !grid[y+1][x])
-        result = p1steps(x, y+1, ex, ey, steps + 1) || result;
+    astar_node* end = calculate(
+        nodes,
+        gh,
+        gw,
+        (astar_pos) { .y = sy, .x = sx },
+        (astar_pos) { .y = ey, .x = ex });
 
-    if (result)
-        bestpath[steps-1] = (pos) { x, y };
-    return result;
+    if (!end)
+        return -1;
+    
+    astar_node* n = end;
+    for (int64_t i = end->fScore - 1; i >= 0 && n; --i, n = n->prev)
+        bestpath[i] = (pos) { n->pos.x, n->pos.y };
+    bestpathcount = end->fScore;
+
+    return end->fScore;
 }
 
 int main(int argc, char** argv)
@@ -59,6 +59,20 @@ int main(int argc, char** argv)
     const uint32_t sy = 0;
     const uint32_t ex = gw - 1;
     const uint32_t ey = gh - 1;
+
+    for (int y = 0; y < gh; ++y)
+    {
+        for (int x = 0; x < gw; ++x)
+        {
+            nodes[y*gw + x] = (astar_node) {
+                .pos = (astar_pos) {.y = y, .x = x},
+                .blockcount = 0,
+                .fScore = INT64_MAX,
+                .prev = NULL,
+                .traversed = false,
+            };
+        }
+    }
 
     int idx = 0;
     int blocks = 0;
@@ -73,24 +87,14 @@ int main(int argc, char** argv)
             y = (y * 10) + (file.data[idx++] & 0xF);
         ++idx; // '\n'
 
-        ++grid[y][x];
+        ++nodes[y*gw + x].blockcount;
 
         if (++blocks == p1blockcount)
         {
             DEBUGLOG("[P1] running\n");
-            p1steps(sx, sy, ex, ey, 1);
+            uint64_t sum1 = astarsteps(sx, sy, ex, ey);
             DEBUGLOG("[P1] done\n");
-            uint64_t sum1 = gridbest[ey][ex] - 1;
-            print_uint64(sum1);
-
-#if defined(ENABLE_DEBUGLOG)
-            for (int y = 0; y < gh; ++y)
-            {
-                for (int x = 0; x < gw; ++x)
-                    DEBUGLOG("%c", grid[y][x] ? '#' : '.');
-                DEBUGLOG("\n");
-            }
-#endif
+            print_int64(sum1);
         }
         else if (blocks > p1blockcount)
         {
@@ -107,8 +111,9 @@ int main(int argc, char** argv)
             if (breaksbest)
             {
                 DEBUGLOG("[P2] block @ %u,%u breaks best, reticulating splines\n", x, y);
-                memset(gridbest, 0, sizeof(gridbest));
-                if (!p1steps(sx, sy, ex, ey, 1))
+                int64_t result = astarsteps(sx, sy, ex, ey);
+                DEBUGLOG("[P2] new best = %" PRId64 "\n", result);
+                if (result < 0)
                 {
                     DEBUGLOG("[P2] done\n");
                     printf("%u,%u\n", x, y);
