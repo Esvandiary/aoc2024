@@ -7,19 +7,40 @@
 
 #include <stdbool.h>
 
-static inline FORCEINLINE const char* matchstart(const char* str, int len, const char* match)
+typedef enum tcolor
 {
-    while (len != 0 && *str != '\0' && *match != '\0' && *str == *match)
+    WHITE = 0,
+    BLUE = 1,
+    BLACK = 2,
+    RED = 3,
+    GREEN = 4
+} tcolor;
+
+static inline FORCEINLINE tcolor getcolor(char c)
+{
+    switch (c)
     {
-        ++str;
-        ++match;
-        --len;
+        case 'w': return WHITE;
+        case 'u': return BLUE;
+        case 'b': return BLACK;
+        case 'r': return RED;
+        case 'g': return GREEN;
+        default: return INT32_MAX; // hopefully explode
     }
-    return (*match == '\0') ? str : NULL;
 }
 
-static char patterns[1024][16];
-static uint32_t patternscount;
+static const char tcolornames[] = {'w', 'u', 'b', 'r', 'g'};
+
+typedef struct node
+{
+    struct node* next[5];
+    bool present;
+} node;
+
+static node nodestore[4096];
+static uint32_t nodestorecount;
+
+static node* rootnode;
 
 typedef struct hashnode
 {
@@ -27,10 +48,30 @@ typedef struct hashnode
     UT_hash_handle hh;
 } hashnode;
 
-static hashnode hashnodes[262144];
+static hashnode hashnodes[131072];
 static uint32_t hashnodescount;
 
 static hashnode* hash;
+
+static inline FORCEINLINE const char* nextpattern(const char* data, int len, node** prevnode, int* prevlen)
+{
+    while ((*prevlen) < len)
+    {
+        tcolor c = getcolor(data[*prevlen]);
+        if ((*prevnode)->next[c])
+        {
+            *prevnode = (*prevnode)->next[c];
+            ++(*prevlen);
+            if ((*prevnode)->present)
+                return data + (*prevlen);
+        }
+        else
+        {
+            break;
+        }
+    }
+    return NULL;
+}
 
 static uint64_t findmatches(const char* data, int len)
 {
@@ -40,18 +81,19 @@ static uint64_t findmatches(const char* data, int len)
         return hcheck->count;
 
     uint64_t count = 0;
-    if (len > 0)
+    const char* ndata;
+    node* prevnode = rootnode;
+    int prevlen = 0;
+    while ((ndata = nextpattern(data, len, &prevnode, &prevlen)) != NULL)
     {
-        for (uint32_t p = 0; p < patternscount; ++p)
+        if (ndata == data + len)
         {
-            const char* nextstr;
-            if ((nextstr = matchstart(data, len, patterns[p])) != NULL)
-            {
-                if (nextstr == data + len)
-                    ++count;
-                else
-                    count += findmatches(nextstr, len - (nextstr - data));
-            }
+            ++count;
+            break;
+        }
+        else
+        {
+            count += findmatches(ndata, len - (ndata - data));
         }
     }
 
@@ -67,31 +109,27 @@ int main(int argc, char** argv)
     mmap_file file = mmap_file_open_ro("input.txt");
     const int fileSize = (int)(file.size);
 
+    rootnode = nodestore + 0;
+    nodestorecount = 1;
+
     int idx = 0;
     while (file.data[idx] != '\n')
     {
-        int clen = 0;
+        node* n = rootnode;
         while (file.data[idx] != ',' && file.data[idx] != '\n')
         {
-            patterns[patternscount][clen++] = file.data[idx];
+            tcolor c = getcolor(file.data[idx]);
+            if (!n->next[c])
+                n->next[c] = nodestore + (nodestorecount++);
+            n = n->next[c];
             ++idx;
         }
-        if (clen)
-            ++patternscount;
+        n->present = true;
 
         idx += 2; // ', ' or '\n\n'
         if (file.data[idx-1] == '\n')
             break;
     }
-
-#if defined(ENABLE_DEBUGLOG) && defined(SPAM)
-    tnode* path[12] = {0};
-    for (int i = 0; i < 5; ++i)
-    {
-        path[0] = rootnode->next[i];
-        printtowels(path, 1);
-    }
-#endif
 
     uint64_t sum1 = 0, sum2 = 0;
 
@@ -102,7 +140,6 @@ int main(int argc, char** argv)
             ++laidx;
         
         DEBUGLOG("%.*s --> ", laidx - idx, file.data + idx);
-        // uint32_t result = possible(0, file.data + idx, file.data + idx, laidx - idx, rootnode) ? 1 : 0;
         uint64_t result = findmatches(file.data + idx, laidx - idx);
         DEBUGLOG("%" PRIu64 "\n", result);
         sum1 += (result) ? 1 : 0;
