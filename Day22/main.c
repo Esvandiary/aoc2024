@@ -68,7 +68,6 @@ int main(int argc, char** argv)
 
     print_uint64(sum1);
 
-    int8_t bestdiff[4];
     uint32_t bestbananas = 0;
     for (int a = 0; a < 19; ++a)
     {
@@ -79,13 +78,7 @@ int main(int argc, char** argv)
                 for (int d = 0; d < 19; ++d)
                 {
                     if (p2bananas[a][b][c][d] > bestbananas)
-                    {
-                        bestdiff[0] = a;
-                        bestdiff[1] = b;
-                        bestdiff[2] = c;
-                        bestdiff[3] = d;
                         bestbananas = p2bananas[a][b][c][d];
-                    }
                 }
             }
         }
