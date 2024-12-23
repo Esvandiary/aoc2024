@@ -2,6 +2,7 @@
 #include "../common/mmap.h"
 #include "../common/print.h"
 #include "../common/view.h"
+#include "../common/uthash/uthash.h"
 
 #include <stdbool.h>
 
@@ -33,6 +34,20 @@ static const pos mppos[] = {
 };
 #define MP_A 10
 
+#define CACHEKEY(lvl, p, np) (((int32_t)(lvl) << 16) | ((int32_t)((p).y) << 12) | ((int32_t)((p).x) << 8) | ((int32_t)((np).y) << 4) | ((int32_t)((np).x) << 0))
+
+typedef struct cacheentry
+{
+    int key;
+    uint64_t result;
+    UT_hash_handle hh;
+} cacheentry;
+
+static cacheentry cachestore[4096];
+static uint32_t cachestorecount;
+
+static cacheentry* cache;
+
 typedef struct state
 {
     pos pos[26];
@@ -59,49 +74,56 @@ static uint64_t get_min_len(int lvl, int maxlvl, state* s, char digit)
     if (lvl == maxlvl)
         return 1;
 
-    uint64_t result = 0;
     pos newpos = (lvl == 0) ? mppos[digit] : (pos) { KPPOSX(digit), KPPOSY(digit) };
+
+    const int ckey = CACHEKEY(maxlvl - lvl, s->pos[lvl], newpos);
+    if (lvl != 0)
+    {
+        cacheentry* cresult;
+        HASH_FIND_INT(cache, &ckey, cresult);
+        if (cresult)
+        {
+            s->pos[lvl] = newpos;
+            return cresult->result;
+        }
+    }
+
+    uint64_t result = 0;
     if (newpos.x == s->pos[lvl].x && newpos.y == s->pos[lvl].y)
     {
-        DEBUGLOG("%.*s[%d] (%u,%u) --> (%u,%u), in position already\n", lvl*4, spaces, lvl, s->pos[lvl].x, s->pos[lvl].y, newpos.x, newpos.y);
         result += get_min_len(lvl + 1, maxlvl, s, KP_A);
     }
     else if (newpos.x == s->pos[lvl].x)
     {
         // Y only
-        DEBUGLOG("%.*s[%d] (%u,%u) --> (%u,%u), Y only\n", lvl*4, spaces, lvl, s->pos[lvl].x, s->pos[lvl].y, newpos.x, newpos.y);
         int ydiff = (newpos.y > s->pos[lvl].y) ? 1 : -1;
         char ychar = (newpos.y > s->pos[lvl].y) ? KP_DOWN : KP_UP;
         uint64_t yscore = 0;
         for (; s->pos[lvl].y != newpos.y; s->pos[lvl].y += ydiff)
             yscore += get_min_len(lvl + 1, maxlvl, s, ychar);
         yscore += get_min_len(lvl + 1, maxlvl, s, KP_A);
-        DEBUGLOG("%.*s  Y score: %u\n", lvl*4, spaces, yscore);
         result += yscore;
     }
     else if (newpos.y == s->pos[lvl].y)
     {
         // X only
-        DEBUGLOG("%.*s[%d] (%u,%u) --> (%u,%u), X only\n", lvl*4, spaces, lvl, s->pos[lvl].x, s->pos[lvl].y, newpos.x, newpos.y);
         int xdiff = (newpos.x > s->pos[lvl].x) ? 1 : -1;
         char xchar = (newpos.x > s->pos[lvl].x) ? KP_RIGHT : KP_LEFT;
         uint64_t xscore = 0;
         for (; s->pos[lvl].x != newpos.x; s->pos[lvl].x += xdiff)
             xscore += get_min_len(lvl + 1, maxlvl, s, xchar);
         xscore += get_min_len(lvl + 1, maxlvl, s, KP_A);
-        DEBUGLOG("%.*s  X score: %u\n", lvl*4, spaces, xscore);
         result += xscore;
     }
     else
     {
         // guh
-        DEBUGLOG("%.*s[%d] (%u,%u) --> (%u,%u), guh\n", lvl*4, spaces, lvl, s->pos[lvl].x, s->pos[lvl].y, newpos.x, newpos.y);
         int xdiff = (newpos.x > s->pos[lvl].x) ? 1 : -1;
         char xchar = (newpos.x > s->pos[lvl].x) ? KP_RIGHT : KP_LEFT;
         int ydiff = (newpos.y > s->pos[lvl].y) ? 1 : -1;
         char ychar = (newpos.y > s->pos[lvl].y) ? KP_DOWN : KP_UP;
 
-        uint64_t minscore = UINT32_MAX;
+        uint64_t minscore = UINT64_MAX;
         state mins;
         if (allowxy(lvl, s->pos[lvl], newpos))
         {
@@ -114,7 +136,6 @@ static uint64_t get_min_len(int lvl, int maxlvl, state* s, char digit)
 
             xyscore += get_min_len(lvl + 1, maxlvl, &xys, KP_A);
 
-            DEBUGLOG("%.*s  XY score: %u\n", lvl*4, spaces, xyscore);
             if (xyscore < minscore)
             {
                 minscore = xyscore;
@@ -131,7 +152,6 @@ static uint64_t get_min_len(int lvl, int maxlvl, state* s, char digit)
                 yxscore += get_min_len(lvl + 1, maxlvl, &yxs, xchar);
             yxscore += get_min_len(lvl + 1, maxlvl, &yxs, KP_A);
 
-            DEBUGLOG("%.*s  YX score: %u\n", lvl*4, spaces, yxscore);
             if (yxscore < minscore)
             {
                 minscore = yxscore;
@@ -141,6 +161,14 @@ static uint64_t get_min_len(int lvl, int maxlvl, state* s, char digit)
 
         result += minscore;
         *s = mins;
+    }
+
+    if (lvl != 0)
+    {
+        cacheentry* entry = cachestore + (cachestorecount++);
+        entry->key = ckey;
+        entry->result = result;
+        HASH_ADD_INT(cache, key, entry);
     }
 
     return result;
@@ -177,10 +205,15 @@ int main(int argc, char** argv)
 
         uint64_t result = 0;
         for (int i = 0; i < digitcount; ++i)
+        {
             result += get_min_len(0, 3, &s, digits[i]);
+            DEBUGLOG(".");
+        }
         
         sum1 += (result * num1);
-/*
+
+        DEBUGLOG(" %" PRIu64 " x %" PRIu64 " = %" PRIu64 " ", result, num1, result * num1);
+
         state s2;
         s2.pos[0] = (pos) { 2, 3 };
         for (int i = 1; i < 26; ++i)
@@ -188,12 +221,19 @@ int main(int argc, char** argv)
 
         uint64_t result2 = 0;
         for (int i = 0; i < digitcount; ++i)
+        {
             result2 += get_min_len(0, 26, &s2, digits[i]);
+            DEBUGLOG(".");
+        }
         
         sum2 += (result2 * num1);
-*/
+
+        DEBUGLOG(" %" PRIu64 " x %" PRIu64 " = %" PRIu64, result2, num1, result2 * num1);
+
         DEBUGLOG("\n");
     }
+
+    DEBUGLOG("cachestore pop: %u\n", cachestorecount);
 
     print_uint64(sum1);
     print_uint64(sum2);
