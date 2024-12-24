@@ -75,12 +75,13 @@ static inline uint32_t deczidx(uint32_t idx)
 
 static const char* opnames[] = { "(none)", "OR", "AND", "XOR" };
 
-static char buf[4][16];
+static char buf[16][4];
 static uint8_t nextbuf;
 
 static const char* idxtostr(uint32_t idx)
 {
-    char* b = buf[nextbuf++];
+    char* b = buf[nextbuf];
+    nextbuf = (nextbuf + 1) % 16;
     b[0] = (idx >> 12) + 96;
     b[1] = ((idx >> 6) & 0x3F) < 32 ? (((idx >> 6) & 0x1F) + 96) : (((idx >> 6) & 0xF) + '0');
     b[2] = ((idx >> 0) & 0x3F) < 32 ? (((idx >> 0) & 0x1F) + 96) : (((idx >> 0) & 0xF) + '0');
