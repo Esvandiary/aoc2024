@@ -1,3 +1,4 @@
+// #define ENABLE_DEBUGLOG
 #include "../common/mmap.h"
 #include "../common/print.h"
 #include "../common/view.h"
@@ -42,6 +43,35 @@ static inline FORCEINLINE uint32_t mkidxs(const char* c)
     return mkidxc(*(c+0), *(c+1), *(c+2));
 }
 
+static inline uint32_t inczidx(uint32_t idx)
+{
+    uint32_t i2 = (idx >> 6) & 0xF, i3 = (idx >> 0) & 0xF;
+    if (i3 == 9)
+    {
+        i3 = 0;
+        ++i2;
+    }
+    else
+    {
+        ++i3;
+    }
+    return (idx & 0x3F000) | ((0x20 | i2) << 6) | (0x20 | i3);
+}
+
+static inline uint32_t deczidx(uint32_t idx)
+{
+    uint32_t i2 = (idx >> 6) & 0xF, i3 = (idx >> 0) & 0xF;
+    if (i3 == 0)
+    {
+        i3 = 9;
+        --i2;
+    }
+    else
+    {
+        --i3;
+    }
+    return (idx & 0x3F000) | ((0x20 | i2) << 6) | (0x20 | i3);
+}
 
 static const char* opnames[] = { "(none)", "OR", "AND", "XOR" };
 
@@ -69,13 +99,13 @@ typedef struct instruction
 static uint8_t p1levels[27 << 12];
 static uint8_t p2levels[27 << 12];
 
-static instruction p1instructions[384][384];
-static uint32_t p1instructionscount[384];
+static instruction p1instructions[256][256];
+static uint32_t p1instructionscount[256];
 
-static instruction p2instructions[384][384];
-static uint32_t p2instructionscount[384];
+static instruction p2instructions[256][256];
+static uint32_t p2instructionscount[256];
 
-static uint8_t specoutputs[2 << 12];
+static uint8_t specoutputs[27 << 12];
 static uint8_t p1outputs[27 << 12];
 static uint8_t p2outputs[27 << 12];
 
@@ -86,7 +116,7 @@ static uint32_t p2wrongendscount;
 
 static uint32_t p2ends[64];
 
-static void run(instruction (* instructions)[384], uint32_t* instructionscount, uint8_t* outputs)
+static void run(instruction (* instructions)[256], uint32_t* instructionscount, uint8_t* outputs)
 {
     for (int lvl = 0; instructionscount[lvl]; ++lvl)
     {
@@ -103,37 +133,53 @@ static void run(instruction (* instructions)[384], uint32_t* instructionscount, 
     }
 }
 
-static uint32_t find_zoutput(instruction* instructions, uint32_t instructionscount, uint32_t num)
+static uint32_t find_zoutput(const instruction* instructions, uint32_t instructionscount, uint32_t num, uint32_t depth)
 {
     const instruction ix = instructions[num];
+    DEBUGLOG("find_zoutput for %s\n", idxtostr(ix.out));
     if ((ix.out >> 12) == 26)
-        return ix.out;
+    {
+        const uint32_t decz = deczidx(ix.out);
+        DEBUGLOG("got z: %s --> %s\n", idxtostr(ix.out), idxtostr(decz));
+        for (int i = 0; i < p2wrongendscount; ++i)
+            if (decz == p2instructions[0][p2wrongends[i]].out)
+                return decz;
+        return 0;
+    }
+
+    if (depth == 0)
+        return 0;
     
     for (int j = 0; j < instructionscount; ++j)
     {
         if (instructions[j].in1 == ix.out || instructions[j].in2 == ix.out)
-            return find_zoutput(instructions, instructionscount, j);
+        {
+            uint32_t result = find_zoutput(instructions, instructionscount, j, depth - 1);
+            if (result)
+                return result;
+        }
     }
-
-    DEBUGLOG("RUH ROH\n");
     return 0;
 }
 
-static void fixup_levels(instruction (*instructions)[384], uint32_t* instructionscount, uint8_t* levels)
+static void fixup_levels(instruction (*instructions)[256], uint32_t* instructionscount, uint8_t* levels)
 {
-    bool any = true;
-    while (any)
+    int processed = 1;
+    while (processed)
     {
-        any = false;
+        processed = 0;
         for (int i = 0; i < instructionscount[0]; ++i)
         {
             const instruction ix = instructions[0][i];
             if (ix.op)
             {
-                any = true;
+                ++processed;
+                // DEBUGLOG("remaining: %s %s %s --> %s\n", idxtostr(ix.in1), opnames[ix.op], idxtostr(ix.in2), idxtostr(ix.out));
                 if (levels[ix.in1] && levels[ix.in2])
                 {
+                    // ++processed;
                     uint8_t lvl = max(levels[ix.in1], levels[ix.in2]);
+                    // DEBUGLOG("updating to lvl %u: %s %s %s --> %s\n", lvl+1, idxtostr(ix.in1), opnames[ix.op], idxtostr(ix.in2), idxtostr(ix.out));
                     levels[ix.out] = lvl + 1;
                     instructions[lvl][instructionscount[lvl]++] = ix;
                     instructions[0][i].op = 0;
@@ -222,16 +268,23 @@ int main(int argc, char** argv)
 
     DEBUGLOG("wrong mids: %u, wrong ends: %u\n", p2wrongmidscount, p2wrongendscount);
 
+    for (int i = 0; i < p2wrongendscount; ++i)
+        DEBUGLOG("wrong end: %s\n", idxtostr(p2instructions[0][p2wrongends[i]].out));
+
     uint32_t wrong[8];
     uint32_t wrongcount = 0;
     for (int i = 0; i < p2wrongmidscount; ++i)
     {
         instruction mix = p2instructions[p2wrongmids[i] >> 24][p2wrongmids[i] & 16777215];
-        uint32_t prevz = find_zoutput(p2instructions[0], p2instructionscount[0], p2wrongmids[i]) - 1;
-        DEBUGLOG("p2 wrong mid %d prev z = %s\n", i, idxtostr(prevz));
+        uint32_t prevz = 0, depth = 2;
+        while (!prevz)
+            prevz = find_zoutput(p2instructions[0], p2instructionscount[0], p2wrongmids[i], depth++);
+        DEBUGLOG("p2 wrong mid %d prev z = %s (%u)\n", i, idxtostr(prevz), prevz);
         uint32_t prevzidx = p2ends[((prevz >> 6) & 0xF) * 10 + (prevz & 0xF)];
         instruction eix = p2instructions[prevzidx >> 24][prevzidx & 16777215];
         DEBUGLOG("p2 wrong mid %d (%s) matches %s\n", i, idxtostr(mix.out), idxtostr(eix.out));
+        DEBUGLOG("mix: %s %s %s -> %s\n", idxtostr(mix.in1), opnames[mix.op], idxtostr(mix.in2), idxtostr(mix.out));
+        DEBUGLOG("eix: %s %s %s -> %s\n", idxtostr(eix.in1), opnames[eix.op], idxtostr(eix.in2), idxtostr(eix.out));
 
         DEBUGLOG("instructions at lvl %u, %u\n", p2wrongmids[i] >> 24, prevzidx >> 24);
 
