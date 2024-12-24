@@ -1,4 +1,3 @@
-// #define ENABLE_DEBUGLOG
 #include "../common/mmap.h"
 #include "../common/print.h"
 #include "../common/view.h"
@@ -7,6 +6,19 @@
 
 #if !defined(max)
 #define max(a,b) ((a) < (b) ? (b) : (a))
+#endif
+
+#if defined(_MSC_VER)
+static inline FORCEINLINE uint64_t ctz(uint64_t value)
+{
+    DWORD leading_zero = 0;
+    if (_BitScanForward64(&leading_zero, value))
+        return leading_zero;
+    else
+        return 64;
+}
+#else
+#define ctz(n) __builtin_ctzll(n)
 #endif
 
 typedef enum operation
@@ -31,7 +43,6 @@ static inline FORCEINLINE uint32_t mkidxs(const char* c)
 }
 
 
-#if defined(ENABLE_DEBUGLOG)
 static const char* opnames[] = { "(none)", "OR", "AND", "XOR" };
 
 static char buf[4][16];
@@ -45,7 +56,6 @@ static const char* idxtostr(uint32_t idx)
     b[2] = ((idx >> 0) & 0x3F) < 32 ? (((idx >> 0) & 0x1F) + 96) : (((idx >> 0) & 0xF) + '0');
     return b;
 }
-#endif
 
 
 typedef struct instruction
@@ -56,13 +66,82 @@ typedef struct instruction
     uint32_t out;
 } instruction;
 
-static uint8_t levels[27 << 12];
+static uint8_t p1levels[27 << 12];
+static uint8_t p2levels[27 << 12];
 
-static instruction instructions[256][512];
-static uint32_t instructionscount[256];
+static instruction p1instructions[384][384];
+static uint32_t p1instructionscount[384];
 
-static uint8_t outputs[27 << 12];
+static instruction p2instructions[384][384];
+static uint32_t p2instructionscount[384];
 
+static uint8_t specoutputs[2 << 12];
+static uint8_t p1outputs[27 << 12];
+static uint8_t p2outputs[27 << 12];
+
+static uint32_t p2wrongmids[16];
+static uint32_t p2wrongmidscount;
+static uint32_t p2wrongends[16];
+static uint32_t p2wrongendscount;
+
+static uint32_t p2ends[64];
+
+static void run(instruction (* instructions)[384], uint32_t* instructionscount, uint8_t* outputs)
+{
+    for (int lvl = 0; instructionscount[lvl]; ++lvl)
+    {
+        for (int i = 0; i < instructionscount[lvl]; ++i)
+        {
+            const instruction ix = instructions[lvl][i];
+            switch (ix.op)
+            {
+                case OP_OR:  outputs[ix.out] = outputs[ix.in1] | outputs[ix.in2]; break;
+                case OP_AND: outputs[ix.out] = outputs[ix.in1] & outputs[ix.in2]; break;
+                case OP_XOR: outputs[ix.out] = outputs[ix.in1] ^ outputs[ix.in2]; break;
+            }
+        }
+    }
+}
+
+static uint32_t find_zoutput(instruction* instructions, uint32_t instructionscount, uint32_t num)
+{
+    const instruction ix = instructions[num];
+    if ((ix.out >> 12) == 26)
+        return ix.out;
+    
+    for (int j = 0; j < instructionscount; ++j)
+    {
+        if (instructions[j].in1 == ix.out || instructions[j].in2 == ix.out)
+            return find_zoutput(instructions, instructionscount, j);
+    }
+
+    DEBUGLOG("RUH ROH\n");
+    return 0;
+}
+
+static void fixup_levels(instruction (*instructions)[384], uint32_t* instructionscount, uint8_t* levels)
+{
+    bool any = true;
+    while (any)
+    {
+        any = false;
+        for (int i = 0; i < instructionscount[0]; ++i)
+        {
+            const instruction ix = instructions[0][i];
+            if (ix.op)
+            {
+                any = true;
+                if (levels[ix.in1] && levels[ix.in2])
+                {
+                    uint8_t lvl = max(levels[ix.in1], levels[ix.in2]);
+                    levels[ix.out] = lvl + 1;
+                    instructions[lvl][instructionscount[lvl]++] = ix;
+                    instructions[0][i].op = 0;
+                }
+            }
+        }
+    }
+}
 
 int main(int argc, char** argv)
 {
@@ -74,10 +153,10 @@ int main(int argc, char** argv)
     {
         uint32_t id = mkidxs(file.data + idx);
         idx += 5; // 'abc: '
-        outputs[id] = file.data[idx] - '0';
+        specoutputs[id] = p1outputs[id] = p2outputs[id] = file.data[idx] - '0';
         idx += 2; // '0\n'
 
-        levels[id] = 1;
+        p1levels[id] = p2levels[id] = 1;
     }
     ++idx; // '\n'
     while (idx < fileSize - 2)
@@ -100,67 +179,146 @@ int main(int argc, char** argv)
         uint32_t out = mkidxs(file.data + idx);
         idx += 4; // 'ghi\n';
 
-        uint8_t lvl = 0;
-        if (levels[in1] && levels[in2])
-        {
-            lvl = max(levels[in1], levels[in2]);
-            levels[out] = lvl + 1;
-        }
-
         DEBUGLOG("ix: %s %s %s -> %s\n", idxtostr(in1), opnames[op], idxtostr(in2), idxtostr(out));
-        instructions[lvl][instructionscount[lvl]++] = (instruction) { in1, in2, op, out };
+        p1instructions[0][p1instructionscount[0]++] = (instruction) { in1, in2, op, out };
+        p2instructions[0][p2instructionscount[0]++] = (instruction) { in1, in2, op, out };
+
+        const bool isstart = ((in1 >> 12) == 24) || ((in1 >> 12) == 25);
+        const bool isend = ((out >> 12) == 26);
+        if (isend)
+            p2ends[((out >> 6) & 0xF) * 10 + (out & 0xF)] = p2instructionscount[0] - 1;
+        if (isend && op != OP_XOR && out != mkidxc('z', '4', '5'))
+            p2wrongends[p2wrongendscount++] = p2instructionscount[0] - 1;
+        if (!isstart && !isend && op == OP_XOR)
+            p2wrongmids[p2wrongmidscount++] = p2instructionscount[0] - 1;
     }
 
-    bool any = true;
-    while (any)
-    {
-        any = false;
-        for (int i = 0; i < instructionscount[0]; ++i)
-        {
-            const instruction ix = instructions[0][i];
-            if (ix.op)
-            {
-                any = true;
-                if (levels[ix.in1] && levels[ix.in2])
-                {
-                    uint8_t lvl = max(levels[ix.in1], levels[ix.in2]);
-                    levels[ix.out] = lvl + 1;
-                    instructions[lvl][instructionscount[lvl]++] = ix;
-                    instructions[0][i].op = 0;
-                }
-            }
-        }
-    }
+    fixup_levels(p1instructions, p1instructionscount, p1levels);
 
-    for (int lvl = 0; instructionscount[lvl]; ++lvl)
-    {
-        for (int i = 0; i < instructionscount[lvl]; ++i)
-        {
-            const instruction ix = instructions[lvl][i];
-            switch (ix.op)
-            {
-                case OP_OR:  outputs[ix.out] = outputs[ix.in1] | outputs[ix.in2]; break;
-                case OP_AND: outputs[ix.out] = outputs[ix.in1] & outputs[ix.in2]; break;
-                case OP_XOR: outputs[ix.out] = outputs[ix.in1] ^ outputs[ix.in2]; break;
-            }
-        }
-    }
+    run(p1instructions, p1instructionscount, p1outputs);
 
 #if defined(ENABLE_DEBUGLOG)
     uint8_t mlvl = 0;
     for (int i = 0; i < 27 << 12; ++i)
-        mlvl = max(mlvl, levels[i]);
+        mlvl = max(mlvl, p1levels[i]);
     DEBUGLOG("max lvl: %u\n", mlvl);
 #endif
 
     uint64_t sum1 = 0;
     for (char i = 0; i < 64; ++i)
-    {
-        sum1 |= ((uint64_t)outputs[mkidxc('z','0'+(i/10),'0'+(i%10))]) << i;
-        DEBUGLOG("z%d%d: %u\n", i/10, i%10, outputs[mkidxc('z','0'+(i/10),'0'+(i%10))]);
-    }
+        sum1 |= ((uint64_t)p1outputs[mkidxc('z','0'+(i/10),'0'+(i%10))]) << i;
 
     print_uint64(sum1);
+
+    uint64_t x = 0;
+    uint64_t y = 0;
+    for (char i = 0; i < 64; ++i)
+    {
+        x |= ((uint64_t)specoutputs[mkidxc('x','0'+(i/10),'0'+(i%10))]) << i;
+        y |= ((uint64_t)specoutputs[mkidxc('y','0'+(i/10),'0'+(i%10))]) << i;
+    }
+
+    DEBUGLOG("x = %" PRIu64 ", y = %" PRIu64 ", x+y = %" PRIu64 ", z = %" PRIu64 "\n", x, y, x+y, sum1);
+
+    DEBUGLOG("wrong mids: %u, wrong ends: %u\n", p2wrongmidscount, p2wrongendscount);
+
+    uint32_t wrong[8];
+    uint32_t wrongcount = 0;
+    for (int i = 0; i < p2wrongmidscount; ++i)
+    {
+        instruction mix = p2instructions[p2wrongmids[i] >> 24][p2wrongmids[i] & 16777215];
+        uint32_t prevz = find_zoutput(p2instructions[0], p2instructionscount[0], p2wrongmids[i]) - 1;
+        DEBUGLOG("p2 wrong mid %d prev z = %s\n", i, idxtostr(prevz));
+        uint32_t prevzidx = p2ends[((prevz >> 6) & 0xF) * 10 + (prevz & 0xF)];
+        instruction eix = p2instructions[prevzidx >> 24][prevzidx & 16777215];
+        DEBUGLOG("p2 wrong mid %d (%s) matches %s\n", i, idxtostr(mix.out), idxtostr(eix.out));
+
+        DEBUGLOG("instructions at lvl %u, %u\n", p2wrongmids[i] >> 24, prevzidx >> 24);
+
+        wrong[wrongcount++] = mix.out;
+        wrong[wrongcount++] = eix.out;
+
+        p2instructions[p2wrongmids[i] >> 24][p2wrongmids[i] & 16777215].out = eix.out;
+        p2instructions[prevzidx >> 24][prevzidx & 16777215].out = mix.out;
+    }
+
+    fixup_levels(p2instructions, p2instructionscount, p2levels);
+
+    run(p2instructions, p2instructionscount, p2outputs);
+
+    uint64_t z2 = 0;
+    for (char i = 0; i < 64; ++i)
+        z2 |= ((uint64_t)p2outputs[mkidxc('z','0'+(i/10),'0'+(i%10))]) << i;
+
+    uint64_t diff = (z2 > x+y) ? (z2 - (x+y)) : ((x+y) - z2);
+    uint64_t diffbit = ctz(diff);
+    DEBUGLOG("part-fixed result: %" PRIu64 " (diff %" PRIu64 ", diff bit %" PRIu64 ")\n", z2, diff, diffbit);
+
+    uint32_t xbad = mkidxc('x', diffbit/10 + '0', diffbit%10 + '0');
+    uint32_t ybad = mkidxc('y', diffbit/10 + '0', diffbit%10 + '0');
+
+#if defined(ENABLE_DEBUGLOG)
+    instruction* badand = NULL;
+    instruction* badxor = NULL;
+#endif
+
+    for (int i = 0; i < p2instructionscount[1]; ++i)
+    {
+        const instruction ix = p2instructions[1][i];
+        if ((ix.in1 == xbad || ix.in1 == ybad) && (ix.in2 == xbad || ix.in2 == ybad))
+        {
+            if (ix.op == OP_AND)
+                wrong[wrongcount++] = ix.out;
+            else if (ix.op == OP_XOR)
+                wrong[wrongcount++] = ix.out;
+
+#if defined(ENABLE_DEBUGLOG)
+            if (ix.op == OP_AND)
+                badand = p2instructions[1] + i;
+            else if (ix.op == OP_XOR)
+                badxor = p2instructions[1] + i;
+#endif
+
+            if (wrongcount == 8)
+                break;
+        }
+    }
+
+#if defined(ENABLE_DEBUGLOG)
+    uint32_t tmp = badand->out;
+    badand->out = badxor->out;
+    badxor->out = tmp;
+
+    memcpy(p2outputs, specoutputs, sizeof(p2outputs));
+    run(p2instructions, p2instructionscount, p2outputs);
+
+    uint64_t z3 = 0;
+    for (char i = 0; i < 64; ++i)
+        z3 |= ((uint64_t)p2outputs[mkidxc('z','0'+(i/10),'0'+(i%10))]) << i;
+
+    DEBUGLOG("z3 = %" PRIu64 "\n", z3);
+#endif
+
+    uint32_t last = 0;
+    uint32_t best;
+    uint32_t swrong[8];
+    uint32_t swrongcount = 0;
+    for (int o = 0; o < 8; ++o)
+    {
+        best = UINT32_MAX;
+        for (int i = 0; i < 8; ++i)
+        {
+            if (wrong[i] < best && wrong[i] > last)
+                best = wrong[i];
+        }
+        last = best;
+        swrong[swrongcount++] = best;
+    }
+
+    printf("%s", idxtostr(swrong[0]));
+    for (int i = 1; i < 8; ++i)
+        printf(",%s", idxtostr(swrong[i]));
+    printf("\n");
 
     return 0;
 }
